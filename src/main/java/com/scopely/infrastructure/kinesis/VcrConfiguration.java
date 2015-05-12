@@ -1,26 +1,31 @@
 package com.scopely.infrastructure.kinesis;
 
-import com.beust.jcommander.Parameter;
-
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class VcrConfiguration {
-    @Parameter(required = true, names = "--stream")
     String stream;
 
-    @Parameter(required = true, names = "--bucket")
     String bucket;
 
-//    @Parameter(required = false, names = "--prefix-pattern")
-//    String s3KeyPrefix = "stream_%s/shard_%s/%s/start=%s,end=%s";
-
-    @Parameter(required = false, names = "--buffer-size-bytes")
     long bufferSizeBytes = 1_024l * 1_024l * 100l;
 
-    @Parameter(required = false, names = "--buffer-time-millis")
     long bufferTimeMillis = TimeUnit.SECONDS.toMillis(60);
 
-    @Parameter(help = true, names = {"-h", "--help"})
-    boolean help;
+    public VcrConfiguration(Map<String, String> getenv) {
+        stream = getenv.get("VCR_STREAM_NAME");
+        bucket = getenv.get("VCR_BUCKET_NAME");
+        bufferSizeBytes = Long.parseLong(getenv.getOrDefault("VCR_BUFFER_SIZE_BYTES", String.valueOf(bufferSizeBytes)));
+        bufferTimeMillis = Long.parseLong(getenv.getOrDefault("VCR_BUFFER_TIME_MILLIS", String.valueOf(bufferTimeMillis)));
+    }
 
+    public void validateConfiguration() {
+        if (stream == null) {
+            throw new IllegalArgumentException("VCR_STREAM_NAME must be set");
+        }
+
+        if (bucket == null) {
+            throw new IllegalArgumentException("VCR_BUCKET_NAME must be set");
+        }
+    }
 }

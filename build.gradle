@@ -1,20 +1,36 @@
 plugins {
+    id "nebula.os-package" version "2.2.6"
 }
 
 apply plugin: 'java'
-apply plugin: 'maven'
+apply plugin: 'application'
+apply plugin: 'os-package-base'
 
 sourceCompatibility = 1.8
 
 group = 'com.scopely'
+mainClassName = 'com.scopely.infrastructure.kinesis.KinesisVcr'
 
 repositories {
     jcenter()
     mavenCentral()
 }
 
+ext.awsSdkVersion = '1.9.34'
+
 dependencies {
-    compile 'com.amazonaws:amazon-kinesis-connectors:1.1.1'
+    compile ('com.amazonaws:amazon-kinesis-connectors:1.1.1') {
+        // Exclude dependency on all of the SDK
+        exclude group: 'com.amazonaws'
+    }
+    compile ('com.amazonaws:amazon-kinesis-client:1.2.1') {
+        // Exclude dependency on all of the SDK
+        exclude group: 'com.amazonaws'
+    }
+    compile "com.amazonaws:aws-java-sdk-s3:${project.ext.awsSdkVersion}"
+    compile "com.amazonaws:aws-java-sdk-kinesis:${project.ext.awsSdkVersion}"
+    compile "com.amazonaws:aws-java-sdk-dynamodb:${project.ext.awsSdkVersion}"
+    compile "com.amazonaws:aws-java-sdk-cloudwatch:${project.ext.awsSdkVersion}"
 
     compile 'com.intellij:annotations:12.0'
     compile 'com.beust:jcommander:1.48'
@@ -25,4 +41,23 @@ dependencies {
     testCompile 'org.mockito:mockito-all:1.10.7'
     testCompile 'org.codehaus.groovy:groovy-all:2.3.0'
     testCompile 'org.spockframework:spock-core:0.7-groovy-2.0'
+}
+
+ospackage {
+    packageName project.name
+
+    requires('oracle-java8-installer')
+
+    into "/opt/scopely/${project.name}"
+    from ("${project.buildDir}/scripts") {
+        into 'bin'
+    }
+
+    from(project.jar.outputs.files) {
+        into 'lib'
+    }
+
+    from(project.configurations.runtime) {
+        into 'lib'
+    }
 }

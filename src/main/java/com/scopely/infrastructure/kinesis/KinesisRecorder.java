@@ -7,7 +7,6 @@ import com.amazonaws.services.kinesis.connectors.KinesisConnectorExecutorBase;
 import com.amazonaws.services.kinesis.connectors.KinesisConnectorRecordProcessorFactory;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
-import com.beust.jcommander.JCommander;
 
 import java.util.Locale;
 import java.util.Properties;
@@ -16,6 +15,7 @@ public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]
     private final KinesisConnectorConfiguration connectorConfiguration;
 
     public KinesisRecorder(VcrConfiguration vcrConfiguration) {
+
         Properties properties = new Properties();
         properties.setProperty(KinesisConnectorConfiguration.PROP_APP_NAME,
                 String.format(Locale.US, "kinesis-recorder-%s", vcrConfiguration.stream));
@@ -41,19 +41,5 @@ public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]
     @Override
     public KinesisConnectorRecordProcessorFactory<byte[], byte[]> getKinesisConnectorRecordProcessorFactory() {
         return new KinesisConnectorRecordProcessorFactory<>(new S3RecorderPipeline(), connectorConfiguration);
-    }
-
-    public static void main(String[] args) {
-        VcrConfiguration vcrConfiguration = new VcrConfiguration();
-        JCommander jCommander = new JCommander(vcrConfiguration, args);
-        jCommander.setProgramName("kinesis-vcr");
-
-        if (vcrConfiguration.help) {
-            jCommander.usage();
-            return;
-        }
-
-        KinesisRecorder s3Executor = new KinesisRecorder(vcrConfiguration);
-        s3Executor.run();
     }
 }
