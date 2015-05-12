@@ -1,0 +1,28 @@
+plugins {
+}
+
+apply plugin: 'java'
+apply plugin: 'maven'
+
+sourceCompatibility = 1.8
+
+group = 'com.scopely'
+
+repositories {
+    jcenter()
+    mavenCentral()
+}
+
+dependencies {
+    compile 'com.amazonaws:amazon-kinesis-connectors:1.1.1'
+
+    compile 'com.intellij:annotations:12.0'
+    compile 'com.beust:jcommander:1.48'
+
+    // testing dependencies
+    testCompile 'junit:junit:4.11'
+    testCompile 'org.easytesting:fest-assert-core:2.0M10'
+    testCompile 'org.mockito:mockito-all:1.10.7'
+    testCompile 'org.codehaus.groovy:groovy-all:2.3.0'
+    testCompile 'org.spockframework:spock-core:0.7-groovy-2.0'
+}
