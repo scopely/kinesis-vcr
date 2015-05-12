@@ -2,11 +2,11 @@ package com.scopely.infrastructure.kinesis;
 
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.connectors.KinesisConnectorConfiguration;
 import com.amazonaws.services.kinesis.connectors.KinesisConnectorExecutorBase;
 import com.amazonaws.services.kinesis.connectors.KinesisConnectorRecordProcessorFactory;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
 
 import java.util.Locale;
 import java.util.Properties;
@@ -14,7 +14,7 @@ import java.util.Properties;
 public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]> {
     private final KinesisConnectorConfiguration connectorConfiguration;
 
-    public KinesisRecorder(VcrConfiguration vcrConfiguration) {
+    public KinesisRecorder(VcrConfiguration vcrConfiguration, AmazonS3 s3, AmazonKinesis kinesis) {
 
         Properties properties = new Properties();
         properties.setProperty(KinesisConnectorConfiguration.PROP_APP_NAME,
@@ -29,8 +29,7 @@ public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]
         AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
 
         // Check everything
-        AmazonS3 amazonS3Client = new AmazonS3Client(awsCredentialsProvider);
-        if (!amazonS3Client.doesBucketExist(vcrConfiguration.bucket)) {
+        if (!s3.doesBucketExist(vcrConfiguration.bucket)) {
             throw new IllegalArgumentException("Requested bucket " + vcrConfiguration.bucket + " does not exist.");
         }
 

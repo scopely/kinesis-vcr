@@ -19,6 +19,13 @@ public class VcrConfiguration {
         bufferTimeMillis = Long.parseLong(getenv.getOrDefault("VCR_BUFFER_TIME_MILLIS", String.valueOf(bufferTimeMillis)));
     }
 
+    public VcrConfiguration(String stream, String bucket, long bufferSizeBytes, long bufferTimeMillis) {
+        this.stream = stream;
+        this.bucket = bucket;
+        this.bufferSizeBytes = bufferSizeBytes;
+        this.bufferTimeMillis = bufferTimeMillis;
+    }
+
     public void validateConfiguration() {
         if (stream == null) {
             throw new IllegalArgumentException("VCR_STREAM_NAME must be set");

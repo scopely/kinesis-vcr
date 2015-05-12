@@ -1,5 +1,10 @@
 package com.scopely.infrastructure.kinesis;
 
+import com.amazonaws.auth.AWSCredentialsProvider;
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import com.amazonaws.services.kinesis.AmazonKinesisClient;
+import com.amazonaws.services.s3.AmazonS3Client;
+
 public class KinesisVcr {
 
     public static void main(String[] args) {
@@ -10,7 +15,10 @@ public class KinesisVcr {
             KinesisPlayer player = new KinesisPlayer(vcrConfiguration);
             player.run();
         } else {
-            KinesisRecorder recorder = new KinesisRecorder(vcrConfiguration);
+            AWSCredentialsProvider credentialsProvider = new DefaultAWSCredentialsProviderChain();
+            KinesisRecorder recorder = new KinesisRecorder(vcrConfiguration,
+                    new AmazonS3Client(credentialsProvider),
+                    new AmazonKinesisClient(credentialsProvider));
             recorder.run();
         }
     }
