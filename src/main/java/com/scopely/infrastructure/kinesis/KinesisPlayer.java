@@ -8,9 +8,10 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.util.IOUtils;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 public class KinesisPlayer {
+    private static final Logger LOGGER = LoggerFactory.getLogger(KinesisPlayer.class);
 
     private final VcrConfiguration vcrConfiguration;
     private final AmazonS3 s3;
@@ -33,15 +35,17 @@ public class KinesisPlayer {
         this.s3 = s3;
         this.kinesis = kinesis;
 
-        // Check everything
+        // Check everything: S3 and Kinesis
+
         if (!s3.doesBucketExist(vcrConfiguration.bucket)) {
-            throw new IllegalArgumentException("Requested bucket " + vcrConfiguration.bucket + " does not exist.");
+            LOGGER.error("Specified S3 bucket '{}' does not exist", vcrConfiguration.bucket);
+            throw new IllegalArgumentException("Bucket not found");
         }
 
-        //noinspection CaughtExceptionImmediatelyRethrown
         try {
             kinesis.describeStream(vcrConfiguration.stream);
         } catch (ResourceNotFoundException e) {
+            LOGGER.error("Specified Kinesis stream '{}' not found", vcrConfiguration.stream);
             throw e;
         }
     }
@@ -49,8 +53,6 @@ public class KinesisPlayer {
     public void play(LocalDate start, @Nullable LocalDate end) {
         playableObjects(start, end).stream().flatMap(summary -> {
             List<byte[]> kinesisPayloads = new LinkedList<>();
-
-
             try (S3Object s3Object = s3.getObject(summary.getBucketName(), summary.getKey())) {
                 byte[] contents = IOUtils.toByteArray(s3Object.getObjectContent());
                 int blockStart = 0;
@@ -65,20 +67,21 @@ public class KinesisPlayer {
                         blockStart = position + 1;
                     }
                 }
-
                 if (blockStart < contents.length) {
                     kinesisPayloads.add(Arrays.copyOfRange(contents, blockStart, contents.length));
                 }
 
-            } catch (IOException | BufferOverflowException e) {
-                e.printStackTrace();
+            } catch (IOException e) {
+                LOGGER.error("Error reading object at key: " + summary.getKey(), e);
             }
+
+            LOGGER.debug("Read {} records from object at key {}", kinesisPayloads.size(), summary.getKey());
 
             return kinesisPayloads.stream();
         })
                 .map(b64Payload -> ByteBuffer.wrap(Base64.getDecoder().decode(b64Payload)))
                 .map(payload -> kinesis.putRecord(vcrConfiguration.stream, payload, UUID.randomUUID().toString()))
-                .forEach(result -> System.out.println(result.getSequenceNumber() + result.getShardId()));
+                .forEach(result -> LOGGER.info("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
     }
 
     List<S3ObjectSummary> playableObjects(LocalDate start, @Nullable LocalDate end) {
@@ -86,17 +89,26 @@ public class KinesisPlayer {
 
         ObjectListing listing = s3.listObjects(vcrConfiguration.bucket, vcrConfiguration.stream + "/");
         do {
-            listing.getObjectSummaries().stream().filter(summary -> {
-                String date = summary.getKey().substring(vcrConfiguration.stream.length() + 1,
-                        vcrConfiguration.stream.length() + 1 + "yyyy-MM-dd".length());
+            listing.getObjectSummaries()
+                    .stream()
+                    .filter(summary -> {
+                        if (!summary.getKey().startsWith(vcrConfiguration.stream)
+                                || summary.getKey().length() < vcrConfiguration.stream.length() + 1 + "yyyy-MM-dd".length()) {
+                            return false;
+                        }
 
-                LocalDate fileDate = LocalDate.parse(date, S3RecorderPipeline.FORMATTER);
+                        String date = summary.getKey().substring(vcrConfiguration.stream.length() + 1,
+                                vcrConfiguration.stream.length() + 1 + "yyyy-MM-dd".length());
 
-                // We want objects with dates on or after the start, and, if there is a specified end,
-                // before or on the end date.
-                return (fileDate.isAfter(start) || fileDate.isEqual(start))
-                        && (end == null || (fileDate.isBefore(end) || fileDate.isEqual(end)));
-            }).forEach(keys::add);
+                        LocalDate fileDate = LocalDate.parse(date, S3RecorderPipeline.FORMATTER);
+
+                        // We want objects with dates on or after the start, and, if there is a specified end,
+                        // before or on the end date.
+                        return (fileDate.isAfter(start) || fileDate.isEqual(start))
+                                && (end == null || (fileDate.isBefore(end) || fileDate.isEqual(end)));
+                    })
+                    .peek(summary -> LOGGER.info("Found playable object at key '{}'", summary.getKey()))
+                    .forEach(keys::add);
 
             listing = s3.listNextBatchOfObjects(listing);
         } while (!listing.getObjectSummaries().isEmpty());

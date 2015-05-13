@@ -6,10 +6,13 @@ import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.AmazonKinesisClient;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
 
 public class KinesisVcr {
+    private static final Logger LOGGER = LoggerFactory.getLogger(KinesisVcr.class);
 
     public static void main(String[] args) {
         VcrConfiguration vcrConfiguration = new VcrConfiguration(System.getenv());
@@ -37,7 +40,7 @@ public class KinesisVcr {
             KinesisPlayer player = new KinesisPlayer(vcrConfiguration, s3, kinesis);
             player.play(start, end);
         } else {
-            KinesisRecorder recorder = new KinesisRecorder(vcrConfiguration, s3, kinesis);
+            KinesisRecorder recorder = new KinesisRecorder(vcrConfiguration, s3, credentialsProvider);
             recorder.run();
         }
     }

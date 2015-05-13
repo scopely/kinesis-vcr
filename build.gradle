@@ -32,7 +32,10 @@ dependencies {
     compile "com.amazonaws:aws-java-sdk-dynamodb:${project.ext.awsSdkVersion}"
     compile "com.amazonaws:aws-java-sdk-cloudwatch:${project.ext.awsSdkVersion}"
 
+    compile 'org.slf4j:slf4j-api:1.7.12'
     compile 'com.intellij:annotations:12.0'
+
+    // For parsing command-line options
     compile 'com.beust:jcommander:1.48'
 
     // testing dependencies
@@ -41,6 +44,9 @@ dependencies {
     testCompile 'org.mockito:mockito-all:1.10.7'
     testCompile 'org.codehaus.groovy:groovy-all:2.3.0'
     testCompile 'org.spockframework:spock-core:0.7-groovy-2.0'
+
+    // logs during testing are nice to have
+    testCompile 'org.slf4j:slf4j-simple:1.7.12'
 }
 
 ospackage {
