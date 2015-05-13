@@ -1,4 +1,4 @@
-package com.scopely.infratructure.kinesis;
+package com.scopely.infrastructure.kinesis;
 
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
@@ -8,8 +8,6 @@ import com.amazonaws.services.kinesis.AmazonKinesisClient;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.scopely.infrastructure.kinesis.KinesisRecorder;
-import com.scopely.infrastructure.kinesis.VcrConfiguration;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -90,6 +88,7 @@ public class KinesisRecorderTest {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         Future<?> submit = executorService.submit(recorder);
         submit.get(10, TimeUnit.SECONDS);
+        executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
 
     @Test
@@ -117,5 +116,7 @@ public class KinesisRecorderTest {
         List<S3ObjectSummary> objectSummaries = s3.listObjects(bucketName).getObjectSummaries();
 
         assertThat(objectSummaries).isNotEmpty();
+
+        executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
 }

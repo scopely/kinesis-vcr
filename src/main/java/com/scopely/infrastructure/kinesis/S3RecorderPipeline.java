@@ -16,10 +16,12 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.Locale;
 
 public class S3RecorderPipeline implements IKinesisConnectorPipeline<byte[], byte[]> {
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    public static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
 
     @Override
@@ -50,7 +52,10 @@ public class S3RecorderPipeline implements IKinesisConnectorPipeline<byte[], byt
 
             @Override
             public byte[] fromClass(byte[] record) throws IOException {
-                return record;
+                byte[] encoded = Base64.getEncoder().encode(record);
+                byte[] expanded = Arrays.copyOf(encoded, encoded.length + 1);
+                expanded[encoded.length] = '\n';
+                return expanded;
             }
         };
     }
