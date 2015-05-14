@@ -69,3 +69,9 @@ In addition to the required parameters `VCR_SOURCE_STREAM_NAME` and `VCR_BUCKET_
 When playing from S3, `VCR_TARGET_STREAM_NAME` must also be specified.
 
 More bells and whistles are sure to come.
+
+## Format
+
+The VCR writes records to S3 as newline-delimited Base64 -- each record on the input stream is written to a line in the
+output file. On playback, it just Base64-decodes each line and emits it on the target stream. As such, this tool is
+completely agnostic to the format of records on the wire.
