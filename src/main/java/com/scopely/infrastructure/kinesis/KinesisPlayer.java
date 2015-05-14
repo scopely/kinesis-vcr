@@ -51,7 +51,7 @@ public class KinesisPlayer {
     }
 
     public void play(LocalDate start, @Nullable LocalDate end) {
-        playableObjects(start, end).stream().flatMap(summary -> {
+        long count = playableObjects(start, end).stream().flatMap(summary -> {
             List<byte[]> kinesisPayloads = new LinkedList<>();
             try (S3Object s3Object = s3.getObject(summary.getBucketName(), summary.getKey())) {
                 byte[] contents = IOUtils.toByteArray(s3Object.getObjectContent());
@@ -82,7 +82,10 @@ public class KinesisPlayer {
                 .map(b64Payload -> ByteBuffer.wrap(Base64.getDecoder().decode(b64Payload)))
                 .parallel()
                 .map(payload -> kinesis.putRecord(vcrConfiguration.targetStream, payload, UUID.randomUUID().toString()))
-                .forEach(result -> LOGGER.info("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
+                .peek(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()))
+                .count();
+
+        LOGGER.info("Wrote {} records to output Kinesis stream {}", count, vcrConfiguration.targetStream);
     }
 
     List<S3ObjectSummary> playableObjects(LocalDate start, @Nullable LocalDate end) {
