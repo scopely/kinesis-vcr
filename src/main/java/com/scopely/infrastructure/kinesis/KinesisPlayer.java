@@ -43,9 +43,9 @@ public class KinesisPlayer {
         }
 
         try {
-            kinesis.describeStream(vcrConfiguration.stream);
+            kinesis.describeStream(vcrConfiguration.targetStream);
         } catch (ResourceNotFoundException e) {
-            LOGGER.error("Specified Kinesis stream '{}' not found", vcrConfiguration.stream);
+            LOGGER.error("Specified Kinesis stream '{}' not found", vcrConfiguration.targetStream);
             throw e;
         }
     }
@@ -80,25 +80,26 @@ public class KinesisPlayer {
             return kinesisPayloads.stream();
         })
                 .map(b64Payload -> ByteBuffer.wrap(Base64.getDecoder().decode(b64Payload)))
-                .map(payload -> kinesis.putRecord(vcrConfiguration.stream, payload, UUID.randomUUID().toString()))
+                .parallel()
+                .map(payload -> kinesis.putRecord(vcrConfiguration.targetStream, payload, UUID.randomUUID().toString()))
                 .forEach(result -> LOGGER.info("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
     }
 
     List<S3ObjectSummary> playableObjects(LocalDate start, @Nullable LocalDate end) {
         List<S3ObjectSummary> keys = new ArrayList<>();
 
-        ObjectListing listing = s3.listObjects(vcrConfiguration.bucket, vcrConfiguration.stream + "/");
+        ObjectListing listing = s3.listObjects(vcrConfiguration.bucket, vcrConfiguration.sourceStream + "/");
         do {
             listing.getObjectSummaries()
                     .stream()
                     .filter(summary -> {
-                        if (!summary.getKey().startsWith(vcrConfiguration.stream)
-                                || summary.getKey().length() < vcrConfiguration.stream.length() + 1 + "yyyy-MM-dd".length()) {
+                        if (!summary.getKey().startsWith(vcrConfiguration.sourceStream)
+                                || summary.getKey().length() < vcrConfiguration.sourceStream.length() + 1 + "yyyy-MM-dd".length()) {
                             return false;
                         }
 
-                        String date = summary.getKey().substring(vcrConfiguration.stream.length() + 1,
-                                vcrConfiguration.stream.length() + 1 + "yyyy-MM-dd".length());
+                        String date = summary.getKey().substring(vcrConfiguration.sourceStream.length() + 1,
+                                vcrConfiguration.sourceStream.length() + 1 + "yyyy-MM-dd".length());
 
                         LocalDate fileDate = LocalDate.parse(date, S3RecorderPipeline.FORMATTER);
 

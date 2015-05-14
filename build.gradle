@@ -18,6 +18,10 @@ repositories {
 
 ext.awsSdkVersion = '1.9.34'
 
+configurations {
+    compile.exclude group: 'commons-logging'
+}
+
 dependencies {
     compile ('com.amazonaws:amazon-kinesis-connectors:1.1.1') {
         // Exclude dependency on all of the SDK
@@ -33,6 +37,7 @@ dependencies {
     compile "com.amazonaws:aws-java-sdk-cloudwatch:${project.ext.awsSdkVersion}"
 
     compile 'org.slf4j:slf4j-api:1.7.12'
+    compile 'org.slf4j:slf4j-simple:1.7.12'
     compile 'com.intellij:annotations:12.0'
 
     // For parsing command-line options
@@ -45,8 +50,9 @@ dependencies {
     testCompile 'org.codehaus.groovy:groovy-all:2.3.0'
     testCompile 'org.spockframework:spock-core:0.7-groovy-2.0'
 
-    // logs during testing are nice to have
-    testCompile 'org.slf4j:slf4j-simple:1.7.12'
+//    compile 'ch.qos.logback:logback-classic:1.1.3'
+    runtime 'org.codehaus.groovy:groovy:2.3.3'
+    compile 'org.slf4j:jcl-over-slf4j:1.7.7'
 }
 
 ospackage {

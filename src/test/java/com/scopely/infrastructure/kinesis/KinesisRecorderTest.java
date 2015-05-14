@@ -82,7 +82,7 @@ public class KinesisRecorderTest {
 
     @Test(expected = TimeoutException.class)
     public void testRecordingDoesntDie() throws Exception {
-        VcrConfiguration configuration = new VcrConfiguration(kinesisStreamName, bucketName,
+        VcrConfiguration configuration = new VcrConfiguration(kinesisStreamName, null, bucketName,
                 1024 * 10, TimeUnit.SECONDS.toMillis(60));
         KinesisRecorder recorder = new KinesisRecorder(configuration, s3, awsCredentialsProvider);
         ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -93,7 +93,7 @@ public class KinesisRecorderTest {
 
     @Test
     public void testFlushTriggering() throws Exception {
-        VcrConfiguration configuration = new VcrConfiguration(kinesisStreamName, bucketName,
+        VcrConfiguration configuration = new VcrConfiguration(kinesisStreamName, null, bucketName,
                 1024 * 10, TimeUnit.SECONDS.toMillis(60));
         KinesisRecorder recorder = new KinesisRecorder(configuration, s3, awsCredentialsProvider);
 

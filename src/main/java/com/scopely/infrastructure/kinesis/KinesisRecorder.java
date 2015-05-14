@@ -20,8 +20,8 @@ public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]
 
         Properties properties = new Properties();
         properties.setProperty(KinesisConnectorConfiguration.PROP_APP_NAME,
-                String.format(Locale.US, "kinesis-recorder-%s", vcrConfiguration.stream));
-        properties.setProperty(KinesisConnectorConfiguration.PROP_KINESIS_INPUT_STREAM, vcrConfiguration.stream);
+                String.format(Locale.US, "kinesis-recorder-%s", vcrConfiguration.sourceStream));
+        properties.setProperty(KinesisConnectorConfiguration.PROP_KINESIS_INPUT_STREAM, vcrConfiguration.sourceStream);
         properties.setProperty(KinesisConnectorConfiguration.PROP_S3_BUCKET, vcrConfiguration.bucket);
         properties.setProperty(KinesisConnectorConfiguration.PROP_BUFFER_BYTE_SIZE_LIMIT,
                 String.valueOf(vcrConfiguration.bufferSizeBytes));
