@@ -135,10 +135,4 @@ public class KinesisRecorderTest {
 
         executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
-
-    @Test
-    public void testReplayIsFaithful() throws Exception {
-
-
-    }
 }
