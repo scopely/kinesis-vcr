@@ -20,6 +20,7 @@ import java.util.Base64;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 public class KinesisPlayer {
     private static final Logger LOGGER = LoggerFactory.getLogger(KinesisPlayer.class);
@@ -51,41 +52,47 @@ public class KinesisPlayer {
     }
 
     public void play(LocalDate start, @Nullable LocalDate end) {
-        long count = playableObjects(start, end).stream().flatMap(summary -> {
-            List<byte[]> kinesisPayloads = new LinkedList<>();
-            try (S3Object s3Object = s3.getObject(summary.getBucketName(), summary.getKey())) {
-                byte[] contents = IOUtils.toByteArray(s3Object.getObjectContent());
-                int blockStart = 0;
-
-                for (int position = 0; position < contents.length; position++) {
-                    if (contents[position] == '\n') {
-                        if (position == blockStart) {
-                            continue;
-                        }
-                        // Copy out the range exclusive of our one-byte delimiter
-                        kinesisPayloads.add(Arrays.copyOfRange(contents, blockStart, position));
-                        blockStart = position + 1;
-                    }
-                }
-                if (blockStart < contents.length) {
-                    kinesisPayloads.add(Arrays.copyOfRange(contents, blockStart, contents.length));
-                }
-
-            } catch (IOException e) {
-                LOGGER.error("Error reading object at key: " + summary.getKey(), e);
-            }
-
-            LOGGER.debug("Read {} records from object at key {}", kinesisPayloads.size(), summary.getKey());
-
-            return kinesisPayloads.stream();
-        })
-                .map(b64Payload -> ByteBuffer.wrap(Base64.getDecoder().decode(b64Payload)))
+        long count = playableObjects(start, end)
+                .stream()
+                .flatMap(this::objectToPayloads)
+                .map(ByteBuffer::wrap)
                 .parallel()
                 .map(payload -> kinesis.putRecord(vcrConfiguration.targetStream, payload, UUID.randomUUID().toString()))
                 .peek(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()))
                 .count();
 
         LOGGER.info("Wrote {} records to output Kinesis stream {}", count, vcrConfiguration.targetStream);
+    }
+
+    Stream<byte[]> objectToPayloads(S3ObjectSummary summary) {
+        List<byte[]> kinesisPayloads = new LinkedList<>();
+        try (S3Object s3Object = s3.getObject(summary.getBucketName(), summary.getKey())) {
+            byte[] contents = IOUtils.toByteArray(s3Object.getObjectContent());
+            int blockStart = 0;
+
+            for (int position = 0; position < contents.length; position++) {
+                if (contents[position] == '\n') {
+                    if (position == blockStart) {
+                        continue;
+                    }
+                    // Copy out the range exclusive of our one-byte delimiter
+                    kinesisPayloads.add(Arrays.copyOfRange(contents, blockStart, position));
+                    blockStart = position + 1;
+                }
+            }
+            if (blockStart < contents.length) {
+                kinesisPayloads.add(Arrays.copyOfRange(contents, blockStart, contents.length));
+            }
+
+        } catch (IOException e) {
+            LOGGER.error("Error reading object at key: " + summary.getKey(), e);
+        }
+
+        LOGGER.debug("Read {} records from object at key {}", kinesisPayloads.size(), summary.getKey());
+
+        return kinesisPayloads
+                .stream()
+                .map(b64Payload -> Base64.getDecoder().decode(b64Payload));
     }
 
     List<S3ObjectSummary> playableObjects(LocalDate start, @Nullable LocalDate end) {

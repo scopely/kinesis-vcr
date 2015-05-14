@@ -28,6 +28,7 @@ public class VcrConfiguration {
                             long bufferSizeBytes,
                             long bufferTimeMillis) {
         this.sourceStream = sourceStream;
+        this.targetStream = targetStream;
         this.bucket = bucket;
         this.bufferSizeBytes = bufferSizeBytes;
         this.bufferTimeMillis = bufferTimeMillis;
