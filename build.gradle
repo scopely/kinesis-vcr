@@ -1,3 +1,13 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+
+    dependencies {
+        classpath 'com.bmuschko:gradle-docker-plugin:2.4'
+    }
+}
+
 plugins {
     id "nebula.os-package" version "2.2.6"
 }
@@ -5,6 +15,7 @@ plugins {
 apply plugin: 'java'
 apply plugin: 'application'
 apply plugin: 'os-package-base'
+apply plugin: 'com.bmuschko.docker-java-application'
 
 sourceCompatibility = 1.8
 
@@ -54,6 +65,19 @@ dependencies {
     runtime 'org.codehaus.groovy:groovy:2.3.3'
     compile 'org.slf4j:jcl-over-slf4j:1.7.7'
 }
+
+docker {
+    url "https://192.168.59.103:2376"
+    certPath = new File(System.properties['user.home'], '.boot2docker/certs/boot2docker-vm')
+
+
+    javaApplication {
+        baseImage = 'anapsix/docker-oracle-java8'
+        maintainer = 'Scopely'
+        tag = "${project.name}:${project.version}"
+    }
+}
+
 
 ospackage {
     packageName project.name
