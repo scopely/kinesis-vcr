@@ -68,7 +68,7 @@ dependencies {
 
 docker {
     url = "https://192.168.59.103:2376"
-    certPath = new File(System.getenv('DOCKER_CERT_PATH'))
+    certPath = new File(System.getenv('DOCKER_CERT_PATH') ?: project.property('dockerCertPath'))
 
     registryCredentials {
         username = project.hasProperty('dockerHubUsername') ? project.property('dockerHubUsername') : null
