@@ -2,6 +2,7 @@ package com.scopely.infrastructure.kinesis;
 
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.AmazonKinesisClient;
@@ -11,9 +12,8 @@ import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.util.IOUtils;
 import org.fest.assertions.core.Condition;
-import org.junit.AfterClass;
+import org.junit.After;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.Logger;
@@ -28,9 +28,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 import static org.fest.assertions.api.Assertions.assertThat;
@@ -42,70 +40,60 @@ import static org.mockito.Mockito.verify;
 public class KinesisRecorderTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(KinesisRecorderTest.class);
 
-    private static AmazonDynamoDBClient dynamoDb;
-    private static String kinesisStreamName;
-    private static String bucketName;
+    private AmazonDynamoDB dynamoDb;
+    private String kinesisStreamName;
+    private String bucketName;
+    private AmazonS3 s3;
+    private AmazonKinesis kinesis;
+    private AWSCredentialsProvider awsCredentialsProvider;
 
-    private static AmazonKinesis kinesis;
-    private static AmazonS3 s3;
-    private static AWSCredentialsProvider awsCredentialsProvider;
-
-    @BeforeClass
-    public static void prepareResources() throws Exception {
+    @Before
+    public void setUp() throws Exception {
         awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
         kinesis = new AmazonKinesisClient(awsCredentialsProvider);
         dynamoDb = new AmazonDynamoDBClient(awsCredentialsProvider);
-        s3 = new AmazonS3Client(awsCredentialsProvider);
 
         kinesisStreamName = "krt-test-" + UUID.randomUUID().toString();
-        bucketName = kinesisStreamName;
 
         kinesis.createStream(kinesisStreamName, 1);
-
-        s3.createBucket(bucketName);
 
         while (!"ACTIVE".equals(kinesis.describeStream(kinesisStreamName).getStreamDescription().getStreamStatus())) {
             LOGGER.info("Waiting for stream…");
             Thread.sleep(1000);
         }
 
+        bucketName = kinesisStreamName + UUID.randomUUID().toString().substring(0, 4);
+        s3 = new AmazonS3Client(awsCredentialsProvider);
+        s3.createBucket(bucketName);
         while (!s3.doesBucketExist(bucketName)) {
-            LOGGER.info("Waiting for bucket…");
+            LOGGER.info("Waiting for bucket {} …", bucketName);
             Thread.sleep(1000);
         }
     }
 
-    @AfterClass
-    public static void destroyResources() throws Exception {
-        kinesis.deleteStream(kinesisStreamName);
-
+    @After
+    public void tearDown() throws Exception {
         try {
-            dynamoDb.deleteTable("kinesis-recorder-" + kinesisStreamName);
-        } catch (Exception ignored) {
-
+            s3.listObjects(bucketName).getObjectSummaries().forEach(summary -> {
+                s3.deleteObject(summary.getBucketName(), summary.getKey());
+            });
+        } catch (Exception e) {
+            LOGGER.warn("Ignoring on tearDown: ", e);
         }
 
         try {
             s3.deleteBucket(bucketName);
-        } catch (Exception ignored) {
-
+        } catch (Exception e) {
+            LOGGER.warn("Ignoring on tearDown: ", e);
         }
-    }
 
-    @Before
-    public void setUp() throws Exception {
+        kinesis.deleteStream(kinesisStreamName);
 
-    }
-
-    @Test(expected = TimeoutException.class)
-    public void testRecordingDoesntDie() throws Exception {
-        VcrConfiguration configuration = new VcrConfiguration(kinesisStreamName, null, bucketName,
-                1024 * 10, TimeUnit.SECONDS.toMillis(60));
-        KinesisRecorder recorder = new KinesisRecorder(configuration, s3, awsCredentialsProvider);
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
-        Future<?> submit = executorService.submit(recorder);
-        submit.get(10, TimeUnit.SECONDS);
-        executorService.awaitTermination(10, TimeUnit.SECONDS);
+        try {
+            dynamoDb.deleteTable("kinesis-recorder-" + kinesisStreamName);
+        } catch (Exception e) {
+            LOGGER.warn("Ignoring on tearDown: ", e);
+        }
     }
 
     @Test
