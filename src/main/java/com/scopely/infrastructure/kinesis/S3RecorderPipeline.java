@@ -9,36 +9,30 @@ import com.amazonaws.services.kinesis.connectors.interfaces.IFilter;
 import com.amazonaws.services.kinesis.connectors.interfaces.IKinesisConnectorPipeline;
 import com.amazonaws.services.kinesis.connectors.interfaces.ITransformer;
 import com.amazonaws.services.kinesis.connectors.interfaces.ITransformerBase;
-import com.amazonaws.services.kinesis.connectors.s3.S3Emitter;
 import com.amazonaws.services.kinesis.model.Record;
+import com.amazonaws.services.s3.AmazonS3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.time.Clock;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.Locale;
 
 public class S3RecorderPipeline implements IKinesisConnectorPipeline<byte[], byte[]> {
     private static final Logger LOGGER = LoggerFactory.getLogger(S3RecorderPipeline.class);
 
     public static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
+    private final AmazonS3 s3;
+
+    public S3RecorderPipeline(AmazonS3 amazonS3) {
+        s3 = amazonS3;
+    }
 
     @Override
     public IEmitter<byte[]> getEmitter(KinesisConnectorConfiguration configuration) {
-        return new S3Emitter(configuration) {
-            @Override
-            protected String getS3FileName(String firstSeq, String lastSeq) {
-                return String.format(Locale.US, "%s/%s/%s-%s",
-                        configuration.KINESIS_INPUT_STREAM,
-                        Clock.systemUTC().instant().atOffset(ZoneOffset.UTC).format(FORMATTER),
-                        firstSeq, lastSeq);
-            }
-        };
+        return new InjectableS3Emitter(configuration, s3);
     }
 
     @Override

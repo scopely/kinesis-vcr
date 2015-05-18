@@ -15,8 +15,10 @@ public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]
     private static final Logger LOGGER = LoggerFactory.getLogger(KinesisRecorder.class);
 
     private final KinesisConnectorConfiguration connectorConfiguration;
+    private final AmazonS3 s3;
 
     public KinesisRecorder(VcrConfiguration vcrConfiguration, AmazonS3 s3, AWSCredentialsProvider credentialsProvider) {
+        this.s3 = s3;
 
         Properties properties = new Properties();
         properties.setProperty(KinesisConnectorConfiguration.PROP_APP_NAME,
@@ -39,6 +41,6 @@ public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]
 
     @Override
     public KinesisConnectorRecordProcessorFactory<byte[], byte[]> getKinesisConnectorRecordProcessorFactory() {
-        return new KinesisConnectorRecordProcessorFactory<>(new S3RecorderPipeline(), connectorConfiguration);
+        return new KinesisConnectorRecordProcessorFactory<>(new S3RecorderPipeline(s3), connectorConfiguration);
     }
 }

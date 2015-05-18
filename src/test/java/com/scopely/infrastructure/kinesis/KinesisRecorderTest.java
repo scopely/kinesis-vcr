@@ -7,17 +7,23 @@ import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.AmazonKinesisClient;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.util.IOUtils;
 import org.fest.assertions.core.Condition;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -28,6 +34,10 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 import static org.fest.assertions.api.Assertions.assertThat;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.isNull;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 
 public class KinesisRecorderTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(KinesisRecorderTest.class);
@@ -99,7 +109,7 @@ public class KinesisRecorderTest {
     }
 
     @Test
-    public void testFlushTriggering() throws Exception {
+    public void testRecordAndReplay() throws Exception {
         VcrConfiguration configuration = new VcrConfiguration(kinesisStreamName, kinesisStreamName, bucketName,
                 1024 * 10, TimeUnit.SECONDS.toMillis(60));
         KinesisRecorder recorder = new KinesisRecorder(configuration, s3, awsCredentialsProvider);
@@ -133,6 +143,43 @@ public class KinesisRecorderTest {
                     }
                 });
 
+        executorService.shutdown();
+        executorService.awaitTermination(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    public void testFlushExpectedData() throws Exception {
+        VcrConfiguration configuration = new VcrConfiguration(kinesisStreamName, kinesisStreamName, bucketName,
+                1024 * 1024, TimeUnit.SECONDS.toMillis(10));
+
+        AmazonS3 surveilledS3 = spy(s3);
+        KinesisRecorder recorder = new KinesisRecorder(configuration, surveilledS3, awsCredentialsProvider);
+
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.submit(recorder);
+        kinesis.putRecord(kinesisStreamName,
+                ByteBuffer.wrap("String 1".getBytes(StandardCharsets.UTF_8)),
+                UUID.randomUUID().toString());
+        kinesis.putRecord(kinesisStreamName,
+                ByteBuffer.wrap("String 2".getBytes(StandardCharsets.UTF_8)),
+                UUID.randomUUID().toString());
+        kinesis.putRecord(kinesisStreamName,
+                ByteBuffer.wrap("String 3".getBytes(StandardCharsets.UTF_8)),
+                UUID.randomUUID().toString());
+        kinesis.putRecord(kinesisStreamName,
+                ByteBuffer.wrap("String 4".getBytes(StandardCharsets.UTF_8)),
+                UUID.randomUUID().toString());
+
+        Thread.sleep(TimeUnit.SECONDS.toMillis(45));
+
+        ArgumentCaptor<ByteArrayInputStream> baisCaptor = ArgumentCaptor.forClass(ByteArrayInputStream.class);
+
+        verify(surveilledS3).putObject(anyString(), anyString(), baisCaptor.capture(), isNull(ObjectMetadata.class));
+
+        assertThat(baisCaptor.getValue()).isNotNull();
+        byte[] bytes = IOUtils.toByteArray(baisCaptor.getValue());
+        assertThat(bytes).startsWith(Base64.getEncoder().encode("String 1".getBytes(StandardCharsets.UTF_8)));
+        executorService.shutdown();
         executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
 }
