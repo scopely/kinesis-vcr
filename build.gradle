@@ -1,13 +1,3 @@
-buildscript {
-    repositories {
-        jcenter()
-    }
-
-    dependencies {
-        classpath 'com.bmuschko:gradle-docker-plugin:2.4'
-    }
-}
-
 plugins {
     id "nebula.os-package" version "2.2.6"
 }
@@ -15,7 +5,6 @@ plugins {
 apply plugin: 'java'
 apply plugin: 'application'
 apply plugin: 'os-package-base'
-apply plugin: 'com.bmuschko.docker-java-application'
 
 sourceCompatibility = 1.8
 
@@ -64,23 +53,6 @@ dependencies {
 //    compile 'ch.qos.logback:logback-classic:1.1.3'
     runtime 'org.codehaus.groovy:groovy:2.3.3'
     compile 'org.slf4j:jcl-over-slf4j:1.7.7'
-}
-
-docker {
-    url = "https://192.168.59.103:2376"
-    certPath = new File(System.getenv('DOCKER_CERT_PATH') ?: project.property('dockerCertPath'))
-
-    registryCredentials {
-        username = project.hasProperty('dockerHubUsername') ? project.property('dockerHubUsername') : null
-        password = project.hasProperty('dockerHubPassword') ? project.property('dockerHubPassword') : null
-        email = project.hasProperty('dockerHubEmail') ? project.property('dockerHubEmail') : null
-    }
-
-    javaApplication {
-        baseImage = 'anapsix/docker-oracle-java8'
-        maintainer = 'Scopely'
-        tag = "avram/scopely"
-    }
 }
 
 
