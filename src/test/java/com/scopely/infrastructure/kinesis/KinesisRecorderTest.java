@@ -177,6 +177,7 @@ public class KinesisRecorderTest {
         verify(surveilledS3).putObject(anyString(), anyString(), baisCaptor.capture(), isNull(ObjectMetadata.class));
 
         assertThat(baisCaptor.getValue()).isNotNull();
+        baisCaptor.getValue().reset();
         byte[] bytes = IOUtils.toByteArray(baisCaptor.getValue());
         assertThat(bytes).startsWith(Base64.getEncoder().encode("String 1".getBytes(StandardCharsets.UTF_8)));
         executorService.shutdown();
