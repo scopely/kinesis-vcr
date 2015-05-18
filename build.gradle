@@ -61,7 +61,6 @@ dependencies {
     testCompile 'org.codehaus.groovy:groovy-all:2.3.0'
     testCompile 'org.spockframework:spock-core:0.7-groovy-2.0'
 
-//    compile 'ch.qos.logback:logback-classic:1.1.3'
     runtime 'org.codehaus.groovy:groovy:2.3.3'
     compile 'org.slf4j:jcl-over-slf4j:1.7.7'
 }
@@ -87,44 +86,3 @@ ospackage {
 }
 
 project.tasks.createReleaseTag.dependsOn buildDeb
-//
-//task scopelyRelease(type: BaseTask) {
-//    dependsOnOrdered(['initScmPlugin',
-//                      'checkCommitNeeded',
-//                      'checkUpdateNeeded',
-//                      'unSnapshotVersion',
-//                      'confirmReleaseVersion',
-//                      'checkSnapshotDependencies',
-//                      'preTagCommit',
-//                      'buildDeb',
-//                      'createReleaseTag',
-//                      'updateVersion',
-//                      'commitNewVersion'])
-//}
-
-
-public class BaseTask extends DefaultTask {
-    Task task(String taskName) {
-        def taskParts = taskName.split(':')
-        if (taskParts.length == 1) {
-            project.tasks.getByName(taskName)
-        } else if (taskParts.length == 2) {
-            def subprojectName = taskParts[0]
-            def subprojectTask = taskParts[1]
-            def subproject = project.subprojects.find { it.name == subprojectName }
-
-            subproject.tasks.getByName(subprojectTask)
-        } else {
-            throw new IllegalArgumentException("Invalid task name format: $taskName")
-        }
-    }
-
-    void dependsOnOrdered(def tasks) {
-        tasks.each { t -> dependsOn(task(t)) }
-        for (int i = 1; i < tasks.size(); i++) {
-            def pre = task(tasks.get(i - 1))
-            def post = task(tasks.get(i))
-            post.mustRunAfter(pre)
-        }
-    }
-}
