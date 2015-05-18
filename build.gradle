@@ -1,3 +1,15 @@
+buildscript {
+    repositories {
+        jcenter()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.github.townsfolk:gradle-release:1.2'
+    }
+}
+
+
 plugins {
     id "nebula.os-package" version "2.2.6"
 }
@@ -5,6 +17,8 @@ plugins {
 apply plugin: 'java'
 apply plugin: 'application'
 apply plugin: 'os-package-base'
+apply plugin: 'release'
+
 
 sourceCompatibility = 1.8
 
@@ -40,9 +54,6 @@ dependencies {
     compile 'org.slf4j:slf4j-simple:1.7.12'
     compile 'com.intellij:annotations:12.0'
 
-    // For parsing command-line options
-    compile 'com.beust:jcommander:1.48'
-
     // testing dependencies
     testCompile 'junit:junit:4.11'
     testCompile 'org.easytesting:fest-assert-core:2.0M10'
@@ -72,5 +83,48 @@ ospackage {
 
     from(project.configurations.runtime) {
         into 'lib'
+    }
+}
+
+project.tasks.createReleaseTag.dependsOn buildDeb
+//
+//task scopelyRelease(type: BaseTask) {
+//    dependsOnOrdered(['initScmPlugin',
+//                      'checkCommitNeeded',
+//                      'checkUpdateNeeded',
+//                      'unSnapshotVersion',
+//                      'confirmReleaseVersion',
+//                      'checkSnapshotDependencies',
+//                      'preTagCommit',
+//                      'buildDeb',
+//                      'createReleaseTag',
+//                      'updateVersion',
+//                      'commitNewVersion'])
+//}
+
+
+public class BaseTask extends DefaultTask {
+    Task task(String taskName) {
+        def taskParts = taskName.split(':')
+        if (taskParts.length == 1) {
+            project.tasks.getByName(taskName)
+        } else if (taskParts.length == 2) {
+            def subprojectName = taskParts[0]
+            def subprojectTask = taskParts[1]
+            def subproject = project.subprojects.find { it.name == subprojectName }
+
+            subproject.tasks.getByName(subprojectTask)
+        } else {
+            throw new IllegalArgumentException("Invalid task name format: $taskName")
+        }
+    }
+
+    void dependsOnOrdered(def tasks) {
+        tasks.each { t -> dependsOn(task(t)) }
+        for (int i = 1; i < tasks.size(); i++) {
+            def pre = task(tasks.get(i - 1))
+            def post = task(tasks.get(i))
+            post.mustRunAfter(pre)
+        }
     }
 }
