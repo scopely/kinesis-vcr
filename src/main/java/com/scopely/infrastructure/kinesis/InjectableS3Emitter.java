@@ -4,7 +4,6 @@ import com.amazonaws.services.kinesis.connectors.KinesisConnectorConfiguration;
 import com.amazonaws.services.kinesis.connectors.UnmodifiableBuffer;
 import com.amazonaws.services.kinesis.connectors.interfaces.IEmitter;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,8 +82,6 @@ public class InjectableS3Emitter implements IEmitter<byte[]> {
 
     @Override
     public void shutdown() {
-        if (s3 instanceof AmazonS3Client) {
-            ((AmazonS3Client) s3).shutdown();
-        }
+        // don't shut down the S3 client, since it might be shared.
     }
 }
