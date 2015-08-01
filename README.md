@@ -36,7 +36,23 @@ records for the date range 2014-05-01 to 2014-05-10 (inclusive) onto the stream 
 
 ## Running somewhere else?
 
-### Build
+### JAR distribution
+
+#### Build
+Make a fat JAR:
+```
+./gradlew shadowJar
+```
+Your JAR will be in `build/libs/kinesis-vcr-1.0.4-SNAPSHOT-all.jar`.
+
+#### Run
+```
+java -jar kinesis-vcr-1.0.4-SNAPSHOT-all.jar record
+```
+
+### Debian
+
+#### Build
 Make a Debian package:
 ```
 ./gradlew buildDeb
@@ -44,7 +60,7 @@ Make a Debian package:
 
 Your package will be in `build/distributions/kinesis-vcr_1.0.0_all.deb`.
 
-### Run
+#### Run
 Install the package. The script `kinesis-vcr` will be installed to `/opt/scopely/kinesis-vcr/bin/kinesis-vcr`.
 
 Invoke it like you would locally, _e.g._:
