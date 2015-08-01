@@ -43,7 +43,7 @@ Make a fat JAR:
 ```
 ./gradlew shadowJar
 ```
-Your package will be in `build/libs/kinesis-vcr-1.0.4-SNAPSHOT-all.jar`.
+Your JAR will be in `build/libs/kinesis-vcr-1.0.4-SNAPSHOT-all.jar`.
 
 #### Run
 ```
