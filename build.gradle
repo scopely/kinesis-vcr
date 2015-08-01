@@ -11,14 +11,16 @@ buildscript {
 
 
 plugins {
-    id "nebula.os-package" version "2.2.6"
+    id 'java'
+    id 'nebula.os-package' version '2.2.6'
+    id 'com.github.johnrengelman.shadow' version '1.2.2'
 }
 
 apply plugin: 'java'
 apply plugin: 'application'
+apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'os-package-base'
 apply plugin: 'release'
-
 
 sourceCompatibility = 1.8
 
