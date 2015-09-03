@@ -11,14 +11,16 @@ buildscript {
 
 
 plugins {
-    id "nebula.os-package" version "2.2.6"
+    id 'java'
+    id 'nebula.os-package' version '2.2.6'
+    id 'com.github.johnrengelman.shadow' version '1.2.2'
 }
 
 apply plugin: 'java'
 apply plugin: 'application'
+apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'os-package-base'
 apply plugin: 'release'
-
 
 sourceCompatibility = 1.8
 
@@ -30,18 +32,19 @@ repositories {
     mavenCentral()
 }
 
-ext.awsSdkVersion = '1.9.34'
+ext.awsSdkVersion = '1.10.15'
 
 configurations {
     compile.exclude group: 'commons-logging'
 }
 
 dependencies {
-    compile ('com.amazonaws:amazon-kinesis-connectors:1.1.1') {
+    compile ('com.amazonaws:amazon-kinesis-connectors:1.2.0') {
         // Exclude dependency on all of the SDK
         exclude group: 'com.amazonaws'
     }
-    compile ('com.amazonaws:amazon-kinesis-client:1.2.1') {
+    // connector tested with 1.4
+    compile ('com.amazonaws:amazon-kinesis-client:1.4.0') {
         // Exclude dependency on all of the SDK
         exclude group: 'com.amazonaws'
     }

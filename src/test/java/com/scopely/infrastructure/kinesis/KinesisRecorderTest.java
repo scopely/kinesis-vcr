@@ -32,8 +32,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.fest.assertions.api.Assertions.assertThat;
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.isNull;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
@@ -162,7 +162,7 @@ public class KinesisRecorderTest {
 
         ArgumentCaptor<ByteArrayInputStream> baisCaptor = ArgumentCaptor.forClass(ByteArrayInputStream.class);
 
-        verify(surveilledS3).putObject(anyString(), anyString(), baisCaptor.capture(), isNull(ObjectMetadata.class));
+        verify(surveilledS3).putObject(anyString(), anyString(), baisCaptor.capture(), any(ObjectMetadata.class));
 
         assertThat(baisCaptor.getValue()).isNotNull();
         baisCaptor.getValue().reset();
