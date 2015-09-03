@@ -7,6 +7,7 @@ import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.util.IOUtils;
+
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,13 +15,15 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Stream;
+
+import rx.Observable;
+import rx.Subscriber;
+import rx.schedulers.Schedulers;
 
 public class KinesisPlayer {
     private static final Logger LOGGER = LoggerFactory.getLogger(KinesisPlayer.class);
@@ -53,18 +56,27 @@ public class KinesisPlayer {
 
     public void play(LocalDate start, @Nullable LocalDate end) {
         long count = playableObjects(start, end)
-                .stream()
+                .subscribeOn(Schedulers.io())
                 .flatMap(this::objectToPayloads)
                 .map(ByteBuffer::wrap)
-                .parallel()
                 .map(payload -> kinesis.putRecord(vcrConfiguration.targetStream, payload, UUID.randomUUID().toString()))
-                .peek(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()))
-                .count();
+                .retry((counter, throwable) -> {
+                    LOGGER.error("Failed to put record in stream", throwable);
+                    try {
+                        Thread.sleep(5000l);
+                    } catch (InterruptedException ignore) {
+                    }
+                    return counter < 3;
+                })
+                .doOnNext(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()))
+                .count()
+                .toBlocking()
+                .first();
 
         LOGGER.info("Wrote {} records to output Kinesis stream {}", count, vcrConfiguration.targetStream);
     }
 
-    Stream<byte[]> objectToPayloads(S3ObjectSummary summary) {
+    Observable<byte[]> objectToPayloads(S3ObjectSummary summary) {
         List<byte[]> kinesisPayloads = new LinkedList<>();
         try (S3Object s3Object = s3.getObject(summary.getBucketName(), summary.getKey())) {
             byte[] contents = IOUtils.toByteArray(s3Object.getObjectContent());
@@ -90,39 +102,47 @@ public class KinesisPlayer {
 
         LOGGER.debug("Read {} records from object at key {}", kinesisPayloads.size(), summary.getKey());
 
-        return kinesisPayloads
-                .stream()
-                .map(b64Payload -> Base64.getDecoder().decode(b64Payload));
+        return Observable.from(kinesisPayloads)
+                         .map(b64Payload -> Base64.getDecoder().decode(b64Payload));
     }
 
-    List<S3ObjectSummary> playableObjects(LocalDate start, @Nullable LocalDate end) {
-        List<S3ObjectSummary> keys = new ArrayList<>();
+    Observable<S3ObjectSummary> playableObjects(LocalDate start, @Nullable LocalDate end) {
 
-        ObjectListing listing = s3.listObjects(vcrConfiguration.bucket, vcrConfiguration.sourceStream + "/");
-        do {
-            listing.getObjectSummaries()
-                    .stream()
-                    .filter(summary -> {
-                        if (!summary.getKey().startsWith(vcrConfiguration.sourceStream)
-                                || summary.getKey().length() < vcrConfiguration.sourceStream.length() + 1 + "yyyy-MM-dd".length()) {
-                            return false;
-                        }
+        return Observable.create(new Observable.OnSubscribe<S3ObjectSummary>() {
+            @Override
+            public void call(Subscriber<? super S3ObjectSummary> subscriber) {
+                String prefix = vcrConfiguration.sourceStream + "/";
+                ObjectListing listing = s3.listObjects(vcrConfiguration.bucket, prefix);
 
-                        String date = summary.getKey().substring(vcrConfiguration.sourceStream.length() + 1,
-                                vcrConfiguration.sourceStream.length() + 1 + "yyyy-MM-dd".length());
+                while (!subscriber.isUnsubscribed() && !listing.getObjectSummaries().isEmpty()) {
+                    listing.getObjectSummaries()
+                           .stream()
+                           .filter(summary -> {
+                               if (!summary.getKey().startsWith(vcrConfiguration.sourceStream)
+                                       || summary.getKey().length() < vcrConfiguration.sourceStream.length() + 1 + "yyyy-MM-dd".length()) {
+                                   return false;
+                               }
 
-                        LocalDate fileDate = LocalDate.parse(date, S3RecorderPipeline.FORMATTER);
+                               String date = summary.getKey().substring(vcrConfiguration.sourceStream.length() + 1,
+                                       vcrConfiguration.sourceStream.length() + 1 + "yyyy-MM-dd".length());
 
-                        // We want objects with dates on or after the start, and, if there is a specified end,
-                        // before or on the end date.
-                        return (fileDate.isAfter(start) || fileDate.isEqual(start))
-                                && (end == null || (fileDate.isBefore(end) || fileDate.isEqual(end)));
-                    })
-                    .peek(summary -> LOGGER.info("Found playable object at key '{}'", summary.getKey()))
-                    .forEach(keys::add);
+                               LocalDate fileDate = LocalDate.parse(date, S3RecorderPipeline.FORMATTER);
 
-            listing = s3.listNextBatchOfObjects(listing);
-        } while (!listing.getObjectSummaries().isEmpty());
-        return keys;
+                               // We want objects with dates on or after the start, and, if there is a specified end,
+                               // before or on the end date.
+                               return (fileDate.isAfter(start) || fileDate.isEqual(start))
+                                       && (end == null || (fileDate.isBefore(end) || fileDate.isEqual(end)));
+                           })
+                           .peek(summary -> {
+                               LOGGER.info("Found playable object at key '{}'", summary.getKey());
+                           })
+                           .forEach(subscriber::onNext);
+
+                    listing = s3.listNextBatchOfObjects(listing);
+                }
+
+                subscriber.onCompleted();
+            }
+        });
     }
 }
