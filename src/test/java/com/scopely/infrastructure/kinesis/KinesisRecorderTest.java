@@ -1,5 +1,6 @@
 package com.scopely.infrastructure.kinesis;
 
+import com.amazonaws.AmazonClientException;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
@@ -11,6 +12,7 @@ import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.util.IOUtils;
+
 import org.fest.assertions.core.Condition;
 import org.junit.After;
 import org.junit.Before;
@@ -29,7 +31,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+
+import rx.Observable;
 
 import static org.fest.assertions.api.Assertions.assertThat;
 import static org.mockito.Matchers.any;
@@ -78,21 +81,25 @@ public class KinesisRecorderTest {
                 s3.deleteObject(summary.getBucketName(), summary.getKey());
             });
         } catch (Exception e) {
-            LOGGER.warn("Ignoring on tearDown: ", e);
+            LOGGER.warn("Failed to delete objects from s3. Ignoring on tearDown: ", e);
         }
 
         try {
             s3.deleteBucket(bucketName);
         } catch (Exception e) {
-            LOGGER.warn("Ignoring on tearDown: ", e);
+            LOGGER.warn("Failed to delete bucket " + bucketName + ". Ignoring on tearDown: ", e);
         }
 
-        kinesis.deleteStream(kinesisStreamName);
+        try {
+            kinesis.deleteStream(kinesisStreamName);
+        } catch (AmazonClientException e) {
+            LOGGER.warn("Failed to delete stream " + kinesisStreamName + ". Ignoring on tearDown: ", e);
+        }
 
         try {
             dynamoDb.deleteTable("kinesis-recorder-" + kinesisStreamName);
         } catch (Exception e) {
-            LOGGER.warn("Ignoring on tearDown: ", e);
+            LOGGER.warn("Failed to delete kinesis leasing table kinesis-recorder-" + kinesisStreamName + ". Ignoring on tearDown: ", e);
         }
     }
 
@@ -123,7 +130,7 @@ public class KinesisRecorderTest {
 
         KinesisPlayer player = new KinesisPlayer(configuration, s3, kinesis);
 
-        assertThat(objectSummaries.stream().flatMap(player::objectToPayloads).collect(Collectors.toList()))
+        assertThat(Observable.from(objectSummaries).flatMap(player::objectToPayloads).toList().toBlocking().first())
                 .are(new Condition<byte[]>() {
                     @Override
                     public boolean matches(byte[] value) {
