@@ -1,6 +1,7 @@
 package com.scopely.infrastructure.kinesis;
 
 import com.amazonaws.services.kinesis.AmazonKinesis;
+import com.amazonaws.services.kinesis.model.DescribeStreamResult;
 import com.amazonaws.services.kinesis.model.PutRecordResult;
 import com.amazonaws.services.kinesis.model.ResourceNotFoundException;
 import com.amazonaws.services.s3.AmazonS3;
@@ -23,9 +24,14 @@ import java.util.Base64;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import rx.Observable;
 import rx.Subscriber;
+import rx.schedulers.Schedulers;
 
 public class KinesisPlayer {
     private static final Logger LOGGER = LoggerFactory.getLogger(KinesisPlayer.class);
@@ -33,6 +39,8 @@ public class KinesisPlayer {
     private final VcrConfiguration vcrConfiguration;
     private final AmazonS3 s3;
     private final AmazonKinesis kinesis;
+
+    private final ExecutorService executor;
 
     public KinesisPlayer(VcrConfiguration vcrConfiguration,
                          AmazonS3 s3,
@@ -49,7 +57,20 @@ public class KinesisPlayer {
         }
 
         try {
-            kinesis.describeStream(vcrConfiguration.targetStream);
+            DescribeStreamResult streamDescription = kinesis.describeStream(vcrConfiguration.targetStream);
+            int numberOfShards = streamDescription.getStreamDescription().getShards().size();
+
+            AtomicInteger atomicInteger = new AtomicInteger();
+            executor = Executors.newFixedThreadPool(numberOfShards, runnable -> {
+                Thread thread = new Thread(runnable);
+                thread.setName("vcr-replay-" + atomicInteger.incrementAndGet());
+                return thread;
+            });
+            try {
+                Thread.sleep(5000l);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         } catch (ResourceNotFoundException e) {
             LOGGER.error("Specified Kinesis stream '{}' not found", vcrConfiguration.targetStream);
             throw e;
@@ -60,7 +81,7 @@ public class KinesisPlayer {
         return playableObjects(start, end)
                 .flatMap(this::objectToPayloads)
                 .map(ByteBuffer::wrap)
-                .map(payload -> kinesis.putRecord(vcrConfiguration.targetStream, payload, UUID.randomUUID().toString()))
+                .flatMap(this::sendPayloadToKinesis)
                 .retry((counter, throwable) -> {
                     LOGGER.error("Failed to put record in stream", throwable);
                     try {
@@ -70,6 +91,20 @@ public class KinesisPlayer {
                     return counter < 3;
                 })
                 .doOnNext(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
+    }
+
+    public void stop() {
+        executor.shutdownNow();
+        try {
+            executor.awaitTermination(10, TimeUnit.SECONDS);
+        } catch (InterruptedException ignore) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private Observable<PutRecordResult> sendPayloadToKinesis(ByteBuffer payload) {
+        return Observable.from(executor.submit(() -> kinesis.putRecord(vcrConfiguration.targetStream, payload, UUID.randomUUID().toString())))
+                         .subscribeOn(Schedulers.io());
     }
 
     public Observable<byte[]> objectToPayloads(S3ObjectSummary summary) {
