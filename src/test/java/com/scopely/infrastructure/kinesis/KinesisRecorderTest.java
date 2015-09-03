@@ -10,7 +10,6 @@ import com.amazonaws.services.kinesis.AmazonKinesisClient;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.util.IOUtils;
 
 import org.fest.assertions.core.Condition;
@@ -24,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -31,8 +31,6 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-import rx.Observable;
 
 import static org.fest.assertions.api.Assertions.assertThat;
 import static org.mockito.Matchers.any;
@@ -125,18 +123,20 @@ public class KinesisRecorderTest {
 
         Thread.sleep(TimeUnit.SECONDS.toMillis(45));
 
-        List<S3ObjectSummary> objectSummaries = s3.listObjects(bucketName).getObjectSummaries();
-        assertThat(objectSummaries).isNotEmpty();
-
         KinesisPlayer player = new KinesisPlayer(configuration, s3, kinesis);
-
-        assertThat(Observable.from(objectSummaries).flatMap(player::objectToPayloads).toList().toBlocking().first())
-                .are(new Condition<byte[]>() {
-                    @Override
-                    public boolean matches(byte[] value) {
-                        return Arrays.equals(value, new byte[40_000]);
-                    }
-                });
+        List<byte[]> result = player
+                .playableObjects(LocalDate.now(), LocalDate.now())
+                .flatMap(player::objectToPayloads)
+                .toList()
+                .toBlocking()
+                .first();
+        assertThat(result).isNotEmpty();
+        assertThat(result).are(new Condition<byte[]>() {
+            @Override
+            public boolean matches(byte[] value) {
+                return Arrays.equals(value, new byte[40_000]);
+            }
+        });
 
         executorService.shutdown();
         recorder.stop();
