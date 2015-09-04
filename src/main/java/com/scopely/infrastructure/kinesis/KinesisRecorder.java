@@ -32,7 +32,7 @@ public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]
                 String.valueOf(vcrConfiguration.bufferSizeBytes));
         properties.setProperty(KinesisConnectorConfiguration.PROP_BUFFER_MILLISECONDS_LIMIT,
                 String.valueOf(vcrConfiguration.bufferTimeMillis));
-        properties.setProperty(KinesisConnectorConfiguration.PROP_WORKER_ID, createWorkedId());
+        properties.setProperty(KinesisConnectorConfiguration.PROP_WORKER_ID, createWorkerId());
 
         // Check everything
         if (!s3.doesBucketExist(vcrConfiguration.bucket)) {
@@ -48,7 +48,7 @@ public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]
         return new KinesisConnectorRecordProcessorFactory<>(new S3RecorderPipeline(s3), connectorConfiguration);
     }
 
-    protected static String createWorkedId() {
+    protected static String createWorkerId() {
         String workerId = String.format("localhost:%s", UUID.randomUUID());
         try {
             workerId = InetAddress.getLocalHost().getCanonicalHostName() + ":" + UUID.randomUUID();
