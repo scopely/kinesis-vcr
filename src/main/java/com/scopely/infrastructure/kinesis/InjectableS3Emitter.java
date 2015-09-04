@@ -4,6 +4,7 @@ import com.amazonaws.services.kinesis.connectors.KinesisConnectorConfiguration;
 import com.amazonaws.services.kinesis.connectors.UnmodifiableBuffer;
 import com.amazonaws.services.kinesis.connectors.interfaces.IEmitter;
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,7 +65,9 @@ public class InjectableS3Emitter implements IEmitter<byte[]> {
         try {
             ByteArrayInputStream object = new ByteArrayInputStream(baos.toByteArray());
             LOGGER.debug("Starting upload of file " + s3URI + " to Amazon S3 containing " + records.size() + " records.");
-            s3.putObject(s3Bucket, s3FileName, object, null);
+            ObjectMetadata meta = new ObjectMetadata();
+            meta.setContentLength(baos.size());
+            s3.putObject(s3Bucket, s3FileName, object, meta);
             LOGGER.info("Successfully emitted " + buffer.getRecords().size() + " records to Amazon S3 in " + s3URI);
             return Collections.emptyList();
         } catch (Exception e) {
