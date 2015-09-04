@@ -88,4 +88,6 @@ ospackage {
     }
 }
 
+project.tasks.buildDeb.dependsOn startScripts
+project.tasks.createReleaseTag.dependsOn buildDeb
 project.tasks.createReleaseTag.dependsOn buildDeb
