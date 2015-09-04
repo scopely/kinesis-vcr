@@ -32,6 +32,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import rx.Observable;
+import rx.observers.TestSubscriber;
+
 import static org.fest.assertions.api.Assertions.assertThat;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
@@ -124,12 +127,19 @@ public class KinesisRecorderTest {
         Thread.sleep(TimeUnit.SECONDS.toMillis(45));
 
         KinesisPlayer player = new KinesisPlayer(configuration, s3, kinesis);
-        List<byte[]> result = player
+
+        Observable<byte[]> bytesObservable = player
                 .playableObjects(LocalDate.now(), LocalDate.now())
-                .flatMap(player::objectToPayloads)
-                .toList()
-                .toBlocking()
-                .first();
+                .flatMap(player::objectToPayloads);
+
+        TestSubscriber<byte[]> testSubscriber = new TestSubscriber<>();
+        bytesObservable.subscribe(testSubscriber);
+
+
+        testSubscriber.awaitTerminalEvent();
+        testSubscriber.assertNoErrors();
+
+        List<byte[]> result = testSubscriber.getOnNextEvents();
         assertThat(result).isNotEmpty();
         assertThat(result).are(new Condition<byte[]>() {
             @Override
