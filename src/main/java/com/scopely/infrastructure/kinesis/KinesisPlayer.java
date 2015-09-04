@@ -1,8 +1,12 @@
 package com.scopely.infrastructure.kinesis;
 
+import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.kinesis.AmazonKinesis;
-import com.amazonaws.services.kinesis.model.DescribeStreamResult;
-import com.amazonaws.services.kinesis.model.PutRecordResult;
+import com.amazonaws.services.kinesis.model.ProvisionedThroughputExceededException;
+import com.amazonaws.services.kinesis.model.PutRecordsRequest;
+import com.amazonaws.services.kinesis.model.PutRecordsRequestEntry;
+import com.amazonaws.services.kinesis.model.PutRecordsResult;
+import com.amazonaws.services.kinesis.model.PutRecordsResultEntry;
 import com.amazonaws.services.kinesis.model.ResourceNotFoundException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ObjectListing;
@@ -19,28 +23,31 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import rx.Observable;
 import rx.Subscriber;
-import rx.schedulers.Schedulers;
+
+import static java.util.stream.Collectors.toList;
 
 public class KinesisPlayer {
     private static final Logger LOGGER = LoggerFactory.getLogger(KinesisPlayer.class);
 
+    private static final int MAX_KINESIS_BATCH_SIZE = 500;
+    private static final int MAX_KINESIS_BATCH_WEIGHT = 1_000_000;
+    private static final int KINESIS_PUT_BATCH_RETIES_TIMEOUT = 30;
+
     private final VcrConfiguration vcrConfiguration;
     private final AmazonS3 s3;
     private final AmazonKinesis kinesis;
-
-    private final ExecutorService executor;
 
     public KinesisPlayer(VcrConfiguration vcrConfiguration,
                          AmazonS3 s3,
@@ -57,31 +64,29 @@ public class KinesisPlayer {
         }
 
         try {
-            DescribeStreamResult streamDescription = kinesis.describeStream(vcrConfiguration.targetStream);
-            int numberOfShards = streamDescription.getStreamDescription().getShards().size();
-
-            AtomicInteger atomicInteger = new AtomicInteger();
-            executor = Executors.newFixedThreadPool(numberOfShards, runnable -> {
-                Thread thread = new Thread(runnable);
-                thread.setName("vcr-replay-" + atomicInteger.incrementAndGet());
-                return thread;
-            });
-            try {
-                Thread.sleep(5000l);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+            kinesis.describeStream(vcrConfiguration.targetStream);
         } catch (ResourceNotFoundException e) {
             LOGGER.error("Specified Kinesis stream '{}' not found", vcrConfiguration.targetStream);
             throw e;
         }
     }
 
-    public Observable<PutRecordResult> play(LocalDate start, @Nullable LocalDate end) {
+    public Observable<PutRecordsResultEntry> play(LocalDate start, @Nullable LocalDate end) {
         return playableObjects(start, end)
                 .flatMap(this::objectToPayloads)
                 .map(ByteBuffer::wrap)
-                .flatMap(this::sendPayloadToKinesis)
+                .lift(new OperatorBufferKinesisBatch(MAX_KINESIS_BATCH_SIZE, MAX_KINESIS_BATCH_WEIGHT))
+                .map(byteBuffers -> byteBuffers.stream()
+                                               .map(buffer -> new PutRecordsRequestEntry()
+                                                       .withData(buffer)
+                                                       .withPartitionKey(UUID.randomUUID().toString()))
+                                               .collect(toList()))
+                .map(entries -> new PutRecordsRequest()
+                        .withStreamName(vcrConfiguration.targetStream)
+                        .withRecords(entries))
+                .map(putRecordsRequest -> putWithRetry(putRecordsRequest).orElse(Collections.emptyList()))
+                .flatMap(Observable::from)
+                .flatMap(pepe -> Observable.from(pepe.getRecords()))
                 .retry((counter, throwable) -> {
                     LOGGER.error("Failed to put record in stream", throwable);
                     try {
@@ -93,18 +98,45 @@ public class KinesisPlayer {
                 .doOnNext(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
     }
 
-    public void stop() {
-        executor.shutdownNow();
+    /**
+     * Tries to send the provided request to kinesis, retrying records that failed to be processed
+     */
+    private Optional<List<PutRecordsResult>> putWithRetry(PutRecordsRequest putRecordsRequest) {
+        long totalSize = putRecordsRequest.getRecords().stream().mapToLong(record -> record.getData().limit()).sum();
+        LOGGER.info("Sending {} records ({} bytes)", putRecordsRequest.getRecords().size(), totalSize);
+
         try {
-            executor.awaitTermination(10, TimeUnit.SECONDS);
-        } catch (InterruptedException ignore) {
-            Thread.currentThread().interrupt();
+            List<PutRecordsResult> resultSetList = new ArrayList<>();
+            return ExponentialBackoffRunner.run(() -> {
+                        PutRecordsResult putRecordsResult = kinesis.putRecords(putRecordsRequest);
+                        resultSetList.add(putRecordsResult);
+                        if (putRecordsResult.getFailedRecordCount() > 0) {
+                            List<PutRecordsRequestEntry> entriesForRetry = new ArrayList<>();
+                            for (int i = 0; i < putRecordsResult.getRecords().size(); i++) {
+                                PutRecordsResultEntry resultEntry = putRecordsResult.getRecords().get(i);
+                                PutRecordsRequestEntry requestEntry = putRecordsRequest.getRecords().get(i);
+                                if (resultEntry.getErrorCode() != null) {
+                                    entriesForRetry.add(requestEntry);
+                                }
+                            }
+                            putRecordsRequest.withRecords(entriesForRetry);
+                            if (entriesForRetry.size() > 0) {
+                                LOGGER.warn("Retrying {} records", entriesForRetry.size());
+                                throw new PartialFailureException();
+                            }
+                        }
+                        return resultSetList;
+                    },
+                    throwable -> throwable instanceof ProvisionedThroughputExceededException
+                            || throwable instanceof AmazonClientException
+                            || throwable instanceof PartialFailureException,
+                    TimeUnit.SECONDS.toMillis(KINESIS_PUT_BATCH_RETIES_TIMEOUT));
+        } catch (Throwable throwable) {
+            throw new RuntimeException("Unhandled exception from Kinesis put", throwable);
         }
     }
 
-    private Observable<PutRecordResult> sendPayloadToKinesis(ByteBuffer payload) {
-        return Observable.from(executor.submit(() -> kinesis.putRecord(vcrConfiguration.targetStream, payload, UUID.randomUUID().toString())))
-                         .subscribeOn(Schedulers.io());
+    private class PartialFailureException extends RuntimeException {
     }
 
     public Observable<byte[]> objectToPayloads(S3ObjectSummary summary) {
@@ -177,9 +209,7 @@ public class KinesisPlayer {
                 while (!subscriber.isUnsubscribed() && !listing.getObjectSummaries().isEmpty()) {
                     listing.getObjectSummaries()
                            .stream()
-                           .peek(summary -> {
-                               LOGGER.info("Found playable object at key '{}'", summary.getKey());
-                           })
+                           .peek(summary -> LOGGER.info("Found playable object at key '{}'", summary.getKey()))
                            .forEach(subscriber::onNext);
 
                     listing = s3.listNextBatchOfObjects(listing);
