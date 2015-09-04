@@ -27,6 +27,7 @@ sourceCompatibility = 1.8
 
 group = 'com.scopely'
 mainClassName = 'com.scopely.infrastructure.kinesis.KinesisVcr'
+applicationDefaultJvmArgs=['-XX:+UseG1GC', '-Xmx6G', '-Xms6G']
 
 repositories {
     jcenter()

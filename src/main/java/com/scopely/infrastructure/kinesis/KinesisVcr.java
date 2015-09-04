@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class KinesisVcr {
     private static final Logger LOGGER = LoggerFactory.getLogger(KinesisVcr.class);
@@ -39,13 +40,15 @@ public class KinesisVcr {
             }
 
             KinesisPlayer player = new KinesisPlayer(vcrConfiguration, s3, kinesis);
-            int count = player.play(start, end)
-                              .count()
-                              .toBlocking()
-                              .first();
+            AtomicInteger recordsCounter = new AtomicInteger();
+            int count = player
+                    .play(start, end)
+                    .doOnNext(each -> System.out.print("Sent " + recordsCounter.incrementAndGet() + " records to kinesis\r"))
+                    .count()
+                    .toBlocking()
+                    .first();
 
             LOGGER.info("Wrote {} records to output Kinesis stream {}", count, vcrConfiguration.targetStream);
-            player.stop();
         } else {
             KinesisRecorder recorder = new KinesisRecorder(vcrConfiguration, s3, credentialsProvider);
             recorder.run();
