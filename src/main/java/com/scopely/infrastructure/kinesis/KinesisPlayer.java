@@ -73,6 +73,14 @@ public class KinesisPlayer {
 
     public Observable<PutRecordsResultEntry> play(LocalDate start, @Nullable LocalDate end) {
         return playableObjects(start, end)
+                .retry((counter, throwable) -> {
+                    LOGGER.error("Failed to put record in stream", throwable);
+                    try {
+                        Thread.sleep(5000l);
+                    } catch (InterruptedException ignore) {
+                    }
+                    return counter < 3;
+                })
                 .flatMap(this::objectToPayloads)
                 .map(ByteBuffer::wrap)
                 .lift(new OperatorBufferKinesisBatch(MAX_KINESIS_BATCH_SIZE, MAX_KINESIS_BATCH_WEIGHT))
@@ -86,15 +94,7 @@ public class KinesisPlayer {
                         .withRecords(entries))
                 .map(putRecordsRequest -> putWithRetry(putRecordsRequest).orElse(Collections.emptyList()))
                 .flatMap(Observable::from)
-                .flatMap(pepe -> Observable.from(pepe.getRecords()))
-                .retry((counter, throwable) -> {
-                    LOGGER.error("Failed to put record in stream", throwable);
-                    try {
-                        Thread.sleep(5000l);
-                    } catch (InterruptedException ignore) {
-                    }
-                    return counter < 3;
-                })
+                .flatMap(putRecordsResult -> Observable.from(putRecordsResult.getRecords()))
                 .doOnNext(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
     }
 
