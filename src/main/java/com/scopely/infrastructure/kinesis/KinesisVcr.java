@@ -6,10 +6,12 @@ import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.AmazonKinesisClient;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class KinesisVcr {
     private static final Logger LOGGER = LoggerFactory.getLogger(KinesisVcr.class);
@@ -38,7 +40,15 @@ public class KinesisVcr {
             }
 
             KinesisPlayer player = new KinesisPlayer(vcrConfiguration, s3, kinesis);
-            player.play(start, end);
+            AtomicInteger recordsCounter = new AtomicInteger();
+            int count = player
+                    .play(start, end)
+                    .doOnNext(each -> System.out.print("Sent " + recordsCounter.incrementAndGet() + " records to kinesis\r"))
+                    .count()
+                    .toBlocking()
+                    .first();
+
+            LOGGER.info("Wrote {} records to output Kinesis stream {}", count, vcrConfiguration.targetStream);
         } else {
             KinesisRecorder recorder = new KinesisRecorder(vcrConfiguration, s3, credentialsProvider);
             recorder.run();
