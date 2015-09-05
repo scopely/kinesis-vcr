@@ -132,6 +132,7 @@ public class KinesisRecorderTest {
                 });
 
         executorService.shutdown();
+        recorder.stop();
         executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
 
@@ -168,6 +169,7 @@ public class KinesisRecorderTest {
         baisCaptor.getValue().reset();
         byte[] bytes = IOUtils.toByteArray(baisCaptor.getValue());
         assertThat(bytes).startsWith(Base64.getEncoder().encode("String 1".getBytes(StandardCharsets.UTF_8)));
+        recorder.stop();
         executorService.shutdown();
         executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
