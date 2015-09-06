@@ -32,7 +32,12 @@ VCR_BUCKET_NAME=dev-kinesis-backups
 ```
 
 This will take a recording of the stream `my-important-data` recorded in the bucket `dev-kinesis-backups` and replay
-records for the date range 2014-05-01 to 2014-05-10 (inclusive) onto the stream `recovery-stream`.
+records for the date range 2014-05-01 to 2014-05-10 (inclusive) onto the stream `recovery-stream`. If only one day
+of data should be play replayed use:
+
+```
+./build/install/kinesis-vcr/bin/kinesis-vcr play 2014-05-01
+```
 
 ## Running somewhere else?
 
