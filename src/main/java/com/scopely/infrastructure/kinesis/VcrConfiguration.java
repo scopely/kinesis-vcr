@@ -15,11 +15,11 @@ public class VcrConfiguration {
     long bufferTimeMillis = TimeUnit.SECONDS.toMillis(60);
 
     public VcrConfiguration(Map<String, String> getenv) {
-        sourceStream = getenv.get("VCR_SOURCE_STREAM_NAME");
-        targetStream = getenv.get("VCR_TARGET_STREAM_NAME");
-        bucket = getenv.get("VCR_BUCKET_NAME");
-        bufferSizeBytes = Long.parseLong(getenv.getOrDefault("VCR_BUFFER_SIZE_BYTES", String.valueOf(bufferSizeBytes)));
-        bufferTimeMillis = Long.parseLong(getenv.getOrDefault("VCR_BUFFER_TIME_MILLIS", String.valueOf(bufferTimeMillis)));
+        this.sourceStream = getenv.get("VCR_SOURCE_STREAM_NAME");
+        this.targetStream = getenv.get("VCR_TARGET_STREAM_NAME");
+        this.bucket = getenv.get("VCR_BUCKET_NAME");
+        this.bufferSizeBytes = Long.parseLong(getenv.getOrDefault("VCR_BUFFER_SIZE_BYTES", String.valueOf(bufferSizeBytes)));
+        this.bufferTimeMillis = Long.parseLong(getenv.getOrDefault("VCR_BUFFER_TIME_MILLIS", String.valueOf(bufferTimeMillis)));
     }
 
     public VcrConfiguration(String sourceStream,
