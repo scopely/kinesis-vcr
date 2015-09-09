@@ -13,28 +13,29 @@ import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.util.IOUtils;
-
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import rx.Observable;
+import rx.Subscriber;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-
-import rx.Observable;
-import rx.Subscriber;
+import java.util.function.Predicate;
 
 import static java.util.stream.Collectors.toList;
 
@@ -43,7 +44,7 @@ public class KinesisPlayer {
 
     private static final int MAX_KINESIS_BATCH_SIZE = 500;
     private static final int MAX_KINESIS_BATCH_WEIGHT = 1_000_000;
-    private static final int KINESIS_PUT_BATCH_RETIES_TIMEOUT = 30;
+    private static final int KINESIS_PUT_BATCH_RETRIES_TIMEOUT = 30;
 
     private final VcrConfiguration vcrConfiguration;
     private final AmazonS3 s3;
@@ -71,7 +72,7 @@ public class KinesisPlayer {
         }
     }
 
-    public Observable<PutRecordsResultEntry> play(LocalDate start, @Nullable LocalDate end) {
+    public Observable<PutRecordsResultEntry> play(LocalDateTime start, @Nullable LocalDateTime end) {
         return playableObjects(start, end)
                 .retry((counter, throwable) -> {
                     LOGGER.error("Failed to put record in stream", throwable);
@@ -85,10 +86,10 @@ public class KinesisPlayer {
                 .map(ByteBuffer::wrap)
                 .lift(new OperatorBufferKinesisBatch(MAX_KINESIS_BATCH_SIZE, MAX_KINESIS_BATCH_WEIGHT))
                 .map(byteBuffers -> byteBuffers.stream()
-                                               .map(buffer -> new PutRecordsRequestEntry()
-                                                       .withData(buffer)
-                                                       .withPartitionKey(UUID.randomUUID().toString()))
-                                               .collect(toList()))
+                        .map(buffer -> new PutRecordsRequestEntry()
+                                .withData(buffer)
+                                .withPartitionKey(UUID.randomUUID().toString()))
+                        .collect(toList()))
                 .map(entries -> new PutRecordsRequest()
                         .withStreamName(vcrConfiguration.targetStream)
                         .withRecords(entries))
@@ -130,7 +131,7 @@ public class KinesisPlayer {
                     throwable -> throwable instanceof ProvisionedThroughputExceededException
                             || throwable instanceof AmazonClientException
                             || throwable instanceof PartialFailureException,
-                    TimeUnit.SECONDS.toMillis(KINESIS_PUT_BATCH_RETIES_TIMEOUT));
+                    TimeUnit.SECONDS.toMillis(KINESIS_PUT_BATCH_RETRIES_TIMEOUT));
         } catch (Throwable throwable) {
             throw new RuntimeException("Unhandled exception from Kinesis put", throwable);
         }
@@ -140,6 +141,7 @@ public class KinesisPlayer {
     }
 
     public Observable<byte[]> objectToPayloads(S3ObjectSummary summary) {
+        LOGGER.info("Found playable object from {} at key '{}'", summary.getLastModified(), summary.getKey());
         List<byte[]> kinesisPayloads = new LinkedList<>();
         try (S3Object s3Object = s3.getObject(summary.getBucketName(), summary.getKey())) {
             byte[] contents = IOUtils.toByteArray(s3Object.getObjectContent());
@@ -166,14 +168,14 @@ public class KinesisPlayer {
         LOGGER.debug("Read {} records from object at key {}", kinesisPayloads.size(), summary.getKey());
 
         return Observable.from(kinesisPayloads)
-                         .map(b64Payload -> Base64.getDecoder().decode(b64Payload));
+                .map(b64Payload -> Base64.getDecoder().decode(b64Payload));
     }
 
 
     /**
      * Returns an observable that emits all the S3 objects between the provided start and end date.
      */
-    public Observable<S3ObjectSummary> playableObjects(@NotNull LocalDate start, @Nullable LocalDate end) {
+    public Observable<S3ObjectSummary> playableObjects(@NotNull LocalDateTime start, @Nullable LocalDateTime end) {
         if (end != null && start.isAfter(end)) {
             throw new IllegalArgumentException("startDate > endDate");
         }
@@ -181,35 +183,44 @@ public class KinesisPlayer {
             end = start;
         }
 
-        final LocalDate finalEnd = end;
+
+        final LocalDateTime finalEnd = end;
+
+        Predicate<Date> dateFilter = date -> {
+            return start.atOffset(ZoneOffset.UTC).toEpochSecond() < date.getTime() / 1000
+                    && finalEnd.atOffset(ZoneOffset.UTC).toEpochSecond() > date.getTime() / 1000;
+        };
+
+
         return Observable.create(new Observable.OnSubscribe<Observable<S3ObjectSummary>>() {
             @Override
             public void call(Subscriber<? super Observable<S3ObjectSummary>> subscriber) {
                 // get all S3 objects for each date between start and end
-                for (LocalDate currentDate = start; !finalEnd.isBefore(currentDate); currentDate = currentDate.plus(1, ChronoUnit.DAYS)) {
+                for (LocalDateTime currentDate = start; !finalEnd.isBefore(currentDate); currentDate = currentDate.plus(1, ChronoUnit.DAYS)) {
                     subscriber.onNext(playableObjects(currentDate));
                 }
                 subscriber.onCompleted();
             }
-        }).flatMap(x -> x);
+        })
+                .flatMap(x -> x)
+                .filter(x -> dateFilter.test(x.getLastModified()));
     }
 
     /**
      * Returns all objects saved under the provided date folder
      */
-    private Observable<S3ObjectSummary> playableObjects(LocalDate date) {
+    private Observable<S3ObjectSummary> playableObjects(LocalDateTime date) {
 
         return Observable.create(new Observable.OnSubscribe<S3ObjectSummary>() {
             @Override
             public void call(Subscriber<? super S3ObjectSummary> subscriber) {
                 // list objects under the currentDate folder
-                String prefix = vcrConfiguration.sourceStream + "/" + date;
+                String prefix = vcrConfiguration.sourceStream + "/" + date.format(S3RecorderPipeline.FORMATTER);
                 ObjectListing listing = s3.listObjects(vcrConfiguration.bucket, prefix);
 
                 while (!subscriber.isUnsubscribed() && !listing.getObjectSummaries().isEmpty()) {
                     listing.getObjectSummaries()
                            .stream()
-                           .peek(summary -> LOGGER.info("Found playable object at key '{}'", summary.getKey()))
                            .forEach(subscriber::onNext);
 
                     listing = s3.listNextBatchOfObjects(listing);
