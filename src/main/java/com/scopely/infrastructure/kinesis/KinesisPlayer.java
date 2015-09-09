@@ -228,23 +228,20 @@ public class KinesisPlayer {
      */
     private Observable<S3ObjectSummary> playableObjects(LocalDateTime date) {
 
-        return Observable.create(new Observable.OnSubscribe<S3ObjectSummary>() {
+        return Observable.create(new Observable.OnSubscribe<Observable<S3ObjectSummary>>() {
             @Override
-            public void call(Subscriber<? super S3ObjectSummary> subscriber) {
+            public void call(Subscriber<? super Observable<S3ObjectSummary>> subscriber) {
                 // list objects under the currentDate folder
                 String prefix = vcrConfiguration.sourceStream + "/" + date.format(S3RecorderPipeline.FORMATTER);
                 ObjectListing listing = s3.listObjects(vcrConfiguration.bucket, prefix);
 
                 while (!subscriber.isUnsubscribed() && !listing.getObjectSummaries().isEmpty()) {
-                    listing.getObjectSummaries()
-                            .stream()
-                            .forEach(subscriber::onNext);
-
+                    subscriber.onNext(Observable.from(listing.getObjectSummaries()));
                     listing = s3.listNextBatchOfObjects(listing);
                 }
 
                 subscriber.onCompleted();
             }
-        }).subscribeOn(Schedulers.io());
+        }).onBackpressureBuffer().flatMap(x -> x).subscribeOn(Schedulers.io());
     }
 }
