@@ -219,7 +219,8 @@ public class KinesisPlayer {
         })
                 .subscribeOn(Schedulers.io())
                 .flatMap(x -> x)
-                .filter(x -> dateFilter.test(x.getLastModified()));
+                .filter(x -> dateFilter.test(x.getLastModified()))
+                .onBackpressureBuffer();
     }
 
     /**
