@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import rx.Observable;
 import rx.Subscriber;
+import rx.schedulers.Schedulers;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -34,6 +35,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
@@ -49,6 +52,8 @@ public class KinesisPlayer {
     private final VcrConfiguration vcrConfiguration;
     private final AmazonS3 s3;
     private final AmazonKinesis kinesis;
+
+    private final ExecutorService kinesisWriter = Executors.newFixedThreadPool(10);
 
     public KinesisPlayer(VcrConfiguration vcrConfiguration,
                          AmazonS3 s3,
@@ -80,11 +85,14 @@ public class KinesisPlayer {
                         Thread.sleep(5000l);
                     } catch (InterruptedException ignore) {
                     }
-                    return counter < 3;
+                    return counter < 10;
                 })
+                .onBackpressureBuffer()
+                .observeOn(Schedulers.io())
                 .flatMap(this::objectToPayloads)
                 .map(ByteBuffer::wrap)
                 .lift(new OperatorBufferKinesisBatch(MAX_KINESIS_BATCH_SIZE, MAX_KINESIS_BATCH_WEIGHT))
+                .onBackpressureBuffer()
                 .map(byteBuffers -> byteBuffers.stream()
                         .map(buffer -> new PutRecordsRequestEntry()
                                 .withData(buffer)
@@ -93,10 +101,11 @@ public class KinesisPlayer {
                 .map(entries -> new PutRecordsRequest()
                         .withStreamName(vcrConfiguration.targetStream)
                         .withRecords(entries))
-                .map(putRecordsRequest -> putWithRetry(putRecordsRequest).orElse(Collections.emptyList()))
-                .flatMap(Observable::from)
-                .flatMap(putRecordsResult -> Observable.from(putRecordsResult.getRecords()))
-                .doOnNext(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
+                .observeOn(Schedulers.io())
+                .flatMap(putRecordsRequest -> Observable.from(kinesisWriter.submit(() -> putWithRetry(putRecordsRequest).orElse(Collections.emptyList()))))
+                        .flatMap(Observable::from)
+                        .flatMap(putRecordsResult -> Observable.from(putRecordsResult.getRecords()))
+                        .doOnNext(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
     }
 
     /**
@@ -168,7 +177,7 @@ public class KinesisPlayer {
         LOGGER.debug("Read {} records from object at key {}", kinesisPayloads.size(), summary.getKey());
 
         return Observable.from(kinesisPayloads)
-                .map(b64Payload -> Base64.getDecoder().decode(b64Payload));
+                .map(b64Payload -> Base64.getDecoder().decode(b64Payload)).subscribeOn(Schedulers.io());
     }
 
 
@@ -202,6 +211,7 @@ public class KinesisPlayer {
                 subscriber.onCompleted();
             }
         })
+                .subscribeOn(Schedulers.io())
                 .flatMap(x -> x)
                 .filter(x -> dateFilter.test(x.getLastModified()));
     }
@@ -228,6 +238,6 @@ public class KinesisPlayer {
 
                 subscriber.onCompleted();
             }
-        });
+        }).subscribeOn(Schedulers.io());
     }
 }
