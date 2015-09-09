@@ -127,7 +127,7 @@ public class KinesisRecorderTest {
         KinesisPlayer player = new KinesisPlayer(configuration, s3, kinesis);
 
         Observable<byte[]> bytesObservable = player
-                .playableObjects(LocalDateTime.now(), LocalDateTime.now())
+                .playableObjects(LocalDateTime.now(), LocalDateTime.now().plusDays(1))
                 .flatMap(player::objectToPayloads);
 
         TestSubscriber<byte[]> testSubscriber = new TestSubscriber<>();
