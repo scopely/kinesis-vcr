@@ -48,12 +48,14 @@ public class KinesisRecorderTest {
     private AmazonS3 s3;
     private AmazonKinesis kinesis;
     private AWSCredentialsProvider awsCredentialsProvider;
+    private ExecutorService executorService;
 
     @Before
     public void setUp() throws Exception {
         awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
         kinesis = new AmazonKinesisClient(awsCredentialsProvider);
         dynamoDb = new AmazonDynamoDBClient(awsCredentialsProvider);
+        executorService = Executors.newSingleThreadExecutor();
 
         kinesisStreamName = "krt-test-" + UUID.randomUUID().toString();
 
@@ -100,6 +102,9 @@ public class KinesisRecorderTest {
         } catch (Exception e) {
             LOGGER.warn("Failed to delete kinesis leasing table kinesis-recorder-" + kinesisStreamName + ". Ignoring on tearDown: ", e);
         }
+
+        executorService.shutdown();
+        executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
 
     @Test
@@ -108,7 +113,6 @@ public class KinesisRecorderTest {
                 1024 * 10, TimeUnit.SECONDS.toMillis(60));
         KinesisRecorder recorder = new KinesisRecorder(configuration, s3, awsCredentialsProvider);
 
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
         executorService.submit(recorder);
 
         kinesis.putRecord(kinesisStreamName, ByteBuffer.wrap(new byte[40_000]), UUID.randomUUID().toString());
@@ -146,9 +150,7 @@ public class KinesisRecorderTest {
             }
         });
 
-        executorService.shutdown();
         recorder.stop();
-        executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
 
     @Test
@@ -159,7 +161,6 @@ public class KinesisRecorderTest {
         AmazonS3 surveilledS3 = spy(s3);
         KinesisRecorder recorder = new KinesisRecorder(configuration, surveilledS3, awsCredentialsProvider);
 
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
         executorService.submit(recorder);
         kinesis.putRecord(kinesisStreamName,
                 ByteBuffer.wrap("String 1".getBytes(StandardCharsets.UTF_8)),
@@ -185,7 +186,5 @@ public class KinesisRecorderTest {
         byte[] bytes = IOUtils.toByteArray(baisCaptor.getValue());
         assertThat(bytes).startsWith(Base64.getEncoder().encode("String 1".getBytes(StandardCharsets.UTF_8)));
         recorder.stop();
-        executorService.shutdown();
-        executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
 }
