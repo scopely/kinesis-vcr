@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import rx.Observable;
 import rx.Subscriber;
+import rx.schedulers.Schedulers;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -34,6 +35,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
@@ -49,6 +52,8 @@ public class KinesisPlayer {
     private final VcrConfiguration vcrConfiguration;
     private final AmazonS3 s3;
     private final AmazonKinesis kinesis;
+
+    private final ExecutorService kinesisWriter = Executors.newFixedThreadPool(10);
 
     public KinesisPlayer(VcrConfiguration vcrConfiguration,
                          AmazonS3 s3,
@@ -80,11 +85,14 @@ public class KinesisPlayer {
                         Thread.sleep(5000l);
                     } catch (InterruptedException ignore) {
                     }
-                    return counter < 3;
+                    return counter < 10;
                 })
+                .onBackpressureBuffer()
+                .observeOn(Schedulers.io())
                 .flatMap(this::objectToPayloads)
                 .map(ByteBuffer::wrap)
                 .lift(new OperatorBufferKinesisBatch(MAX_KINESIS_BATCH_SIZE, MAX_KINESIS_BATCH_WEIGHT))
+                .onBackpressureBuffer()
                 .map(byteBuffers -> byteBuffers.stream()
                         .map(buffer -> new PutRecordsRequestEntry()
                                 .withData(buffer)
@@ -93,7 +101,14 @@ public class KinesisPlayer {
                 .map(entries -> new PutRecordsRequest()
                         .withStreamName(vcrConfiguration.targetStream)
                         .withRecords(entries))
-                .map(putRecordsRequest -> putWithRetry(putRecordsRequest).orElse(Collections.emptyList()))
+                .observeOn(Schedulers.io())
+                .flatMap(putRecordsRequest -> Observable.create((Observable.OnSubscribe<List<PutRecordsResult>>) os -> {
+                    os.onStart();
+                    kinesisWriter.submit(() -> {
+                        os.onNext(putWithRetry(putRecordsRequest).orElse(Collections.<PutRecordsResult>emptyList()));
+                        os.onCompleted();
+                    });
+                }))
                 .flatMap(Observable::from)
                 .flatMap(putRecordsResult -> Observable.from(putRecordsResult.getRecords()))
                 .doOnNext(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
@@ -168,7 +183,7 @@ public class KinesisPlayer {
         LOGGER.debug("Read {} records from object at key {}", kinesisPayloads.size(), summary.getKey());
 
         return Observable.from(kinesisPayloads)
-                .map(b64Payload -> Base64.getDecoder().decode(b64Payload));
+                .map(b64Payload -> Base64.getDecoder().decode(b64Payload)).subscribeOn(Schedulers.io());
     }
 
 
@@ -202,8 +217,10 @@ public class KinesisPlayer {
                 subscriber.onCompleted();
             }
         })
+                .subscribeOn(Schedulers.io())
                 .flatMap(x -> x)
-                .filter(x -> dateFilter.test(x.getLastModified()));
+                .filter(x -> dateFilter.test(x.getLastModified()))
+                .onBackpressureBuffer();
     }
 
     /**
@@ -211,23 +228,20 @@ public class KinesisPlayer {
      */
     private Observable<S3ObjectSummary> playableObjects(LocalDateTime date) {
 
-        return Observable.create(new Observable.OnSubscribe<S3ObjectSummary>() {
+        return Observable.create(new Observable.OnSubscribe<Observable<S3ObjectSummary>>() {
             @Override
-            public void call(Subscriber<? super S3ObjectSummary> subscriber) {
+            public void call(Subscriber<? super Observable<S3ObjectSummary>> subscriber) {
                 // list objects under the currentDate folder
                 String prefix = vcrConfiguration.sourceStream + "/" + date.format(S3RecorderPipeline.FORMATTER);
                 ObjectListing listing = s3.listObjects(vcrConfiguration.bucket, prefix);
 
                 while (!subscriber.isUnsubscribed() && !listing.getObjectSummaries().isEmpty()) {
-                    listing.getObjectSummaries()
-                           .stream()
-                           .forEach(subscriber::onNext);
-
+                    subscriber.onNext(Observable.from(listing.getObjectSummaries()));
                     listing = s3.listNextBatchOfObjects(listing);
                 }
 
                 subscriber.onCompleted();
             }
-        });
+        }).onBackpressureBuffer().flatMap(x -> x).subscribeOn(Schedulers.io());
     }
 }
