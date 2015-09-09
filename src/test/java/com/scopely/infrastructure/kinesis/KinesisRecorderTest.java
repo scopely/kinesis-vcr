@@ -11,7 +11,6 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.util.IOUtils;
-
 import org.fest.assertions.core.Condition;
 import org.junit.After;
 import org.junit.Before;
@@ -19,11 +18,13 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import rx.Observable;
+import rx.observers.TestSubscriber;
 
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -31,9 +32,6 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-import rx.Observable;
-import rx.observers.TestSubscriber;
 
 import static org.fest.assertions.api.Assertions.assertThat;
 import static org.mockito.Matchers.any;
@@ -129,7 +127,7 @@ public class KinesisRecorderTest {
         KinesisPlayer player = new KinesisPlayer(configuration, s3, kinesis);
 
         Observable<byte[]> bytesObservable = player
-                .playableObjects(LocalDate.now(), LocalDate.now())
+                .playableObjects(LocalDateTime.now(), LocalDateTime.now())
                 .flatMap(player::objectToPayloads);
 
         TestSubscriber<byte[]> testSubscriber = new TestSubscriber<>();

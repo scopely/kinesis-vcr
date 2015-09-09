@@ -6,11 +6,10 @@ import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.AmazonKinesisClient;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class KinesisVcr {
@@ -27,16 +26,16 @@ public class KinesisVcr {
         if (args.length > 0 && "play".equals(args[0])) {
 
             if (args.length == 1) {
-                throw new IllegalArgumentException("Must be called with at least two arguments: e.g., `kinesis-vcr play 2014-05-01 2015-05-01` " +
-                        "or `kinesis-vcr play 2014-05-01`");
+                throw new IllegalArgumentException("Must be called with at least two arguments: e.g., `kinesis-vcr play 2014-05-01T00:00:00 2015-05-01T00:00:00` " +
+                        "or `kinesis-vcr play 2014-05-01T00:00:00`");
             }
 
             String startDateArg = args[1];
-            LocalDate start = LocalDate.parse(startDateArg, S3RecorderPipeline.FORMATTER);
+            LocalDateTime start = LocalDateTime.parse(startDateArg);
 
-            LocalDate end = null;
+            LocalDateTime end = null;
             if (args.length > 2) {
-                end = LocalDate.parse(args[2], S3RecorderPipeline.FORMATTER);
+                end = LocalDateTime.parse(args[2]);
             }
 
             KinesisPlayer player = new KinesisPlayer(vcrConfiguration, s3, kinesis);
