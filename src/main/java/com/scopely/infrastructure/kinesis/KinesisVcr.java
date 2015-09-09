@@ -59,6 +59,7 @@ public class KinesisVcr {
                     .first();
 
             LOGGER.info("Wrote {} records to output Kinesis stream {}", count, vcrConfiguration.targetStream);
+            System.exit(0);
         } else {
             KinesisRecorder recorder = new KinesisRecorder(vcrConfiguration, s3, credentialsProvider);
             recorder.run();
