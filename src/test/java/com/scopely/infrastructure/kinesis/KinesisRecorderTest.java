@@ -25,6 +25,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -131,7 +132,7 @@ public class KinesisRecorderTest {
         KinesisPlayer player = new KinesisPlayer(configuration, s3, kinesis);
 
         Observable<byte[]> bytesObservable = player
-                .playableObjects(LocalDateTime.now(), LocalDateTime.now().plusDays(1))
+                .playableObjects(LocalDateTime.now().truncatedTo(ChronoUnit.DAYS), LocalDateTime.now().plusDays(1))
                 .flatMap(player::objectToPayloads);
 
         TestSubscriber<byte[]> testSubscriber = new TestSubscriber<>();
