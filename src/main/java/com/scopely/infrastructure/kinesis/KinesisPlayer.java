@@ -102,10 +102,16 @@ public class KinesisPlayer {
                         .withStreamName(vcrConfiguration.targetStream)
                         .withRecords(entries))
                 .observeOn(Schedulers.io())
-                .flatMap(putRecordsRequest -> Observable.from(kinesisWriter.submit(() -> putWithRetry(putRecordsRequest).orElse(Collections.emptyList()))))
-                        .flatMap(Observable::from)
-                        .flatMap(putRecordsResult -> Observable.from(putRecordsResult.getRecords()))
-                        .doOnNext(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
+                .flatMap(putRecordsRequest -> Observable.create((Observable.OnSubscribe<List<PutRecordsResult>>) os -> {
+                    os.onStart();
+                    kinesisWriter.submit(() -> {
+                        os.onNext(putWithRetry(putRecordsRequest).orElse(Collections.<PutRecordsResult>emptyList()));
+                        os.onCompleted();
+                    });
+                }))
+                .flatMap(Observable::from)
+                .flatMap(putRecordsResult -> Observable.from(putRecordsResult.getRecords()))
+                .doOnNext(result -> LOGGER.debug("Wrote record. Seq {}, shard {}", result.getSequenceNumber(), result.getShardId()));
     }
 
     /**
@@ -230,8 +236,8 @@ public class KinesisPlayer {
 
                 while (!subscriber.isUnsubscribed() && !listing.getObjectSummaries().isEmpty()) {
                     listing.getObjectSummaries()
-                           .stream()
-                           .forEach(subscriber::onNext);
+                            .stream()
+                            .forEach(subscriber::onNext);
 
                     listing = s3.listNextBatchOfObjects(listing);
                 }
