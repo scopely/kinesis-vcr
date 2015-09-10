@@ -2,6 +2,7 @@ package com.scopely.infrastructure.kinesis;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.kinesis.AmazonKinesis;
+import com.amazonaws.services.kinesis.model.DescribeStreamResult;
 import com.amazonaws.services.kinesis.model.ProvisionedThroughputExceededException;
 import com.amazonaws.services.kinesis.model.PutRecordsRequest;
 import com.amazonaws.services.kinesis.model.PutRecordsRequestEntry;
@@ -13,13 +14,11 @@ import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.util.IOUtils;
+
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import rx.Observable;
-import rx.Subscriber;
-import rx.schedulers.Schedulers;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -40,6 +39,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
+import rx.Observable;
+import rx.Subscriber;
+import rx.schedulers.Schedulers;
+
 import static java.util.stream.Collectors.toList;
 
 public class KinesisPlayer {
@@ -54,6 +57,7 @@ public class KinesisPlayer {
     private final AmazonKinesis kinesis;
 
     private final ExecutorService kinesisWriter = Executors.newFixedThreadPool(10);
+    private final int numberOfShards;
 
     public KinesisPlayer(VcrConfiguration vcrConfiguration,
                          AmazonS3 s3,
@@ -70,7 +74,8 @@ public class KinesisPlayer {
         }
 
         try {
-            kinesis.describeStream(vcrConfiguration.targetStream);
+            DescribeStreamResult describeStreamResult = kinesis.describeStream(vcrConfiguration.targetStream);
+            numberOfShards = describeStreamResult.getStreamDescription().getShards().size();
         } catch (ResourceNotFoundException e) {
             LOGGER.error("Specified Kinesis stream '{}' not found", vcrConfiguration.targetStream);
             throw e;
@@ -246,5 +251,12 @@ public class KinesisPlayer {
                 subscriber.onCompleted();
             }
         }).onBackpressureBuffer().flatMap(x -> x).subscribeOn(Schedulers.io());
+    }
+
+    /**
+     * @return number of shards of the target stream
+     */
+    public int getNumberOfShards() {
+        return numberOfShards;
     }
 }
