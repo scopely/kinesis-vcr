@@ -45,6 +45,14 @@ Replay can also specify times, for a narrow playback range:
 
 Specified times are always interpreted as UTC. 
 
+Prior to replaying a stream, the VCR can provide an estimated playing time, which is simply the size of the input dataset divided by the write throughput possible for the target stream. `kinesis-vcr estimate` takes the same parameters as `kinesis-vcr play`:
+
+```bash
+$ kinesis-vcr estimate 2014-05-01T12:00:00 2014-05-03:13:45:00
+[main] INFO com.scopely.infrastructure.kinesis.KinesisVcr - Target stream (kinesis-playback-test) has 2 shards
+[main] INFO com.scopely.infrastructure.kinesis.KinesisVcr - It would take around 50 mins to replay the data in the provided range, which has 341 files and a total size of 6038 MB
+```
+
 ## Running somewhere else?
 
 ### JAR distribution
