@@ -90,14 +90,6 @@ public class KinesisPlayer {
 
     public Observable<PutRecordsResultEntry> play(LocalDateTime start, @Nullable LocalDateTime end) {
         return playableObjects(start, end)
-                .retry((counter, throwable) -> {
-                    LOGGER.error("Failed to put record in stream", throwable);
-                    try {
-                        Thread.sleep(5000l);
-                    } catch (InterruptedException ignore) {
-                    }
-                    return counter < 10;
-                })
                 .onBackpressureBuffer()
                 .observeOn(Schedulers.io())
                 .flatMap(this::objectToPayloads)
@@ -251,7 +243,9 @@ public class KinesisPlayer {
 
                 while (!subscriber.isUnsubscribed() && !listing.getObjectSummaries().isEmpty()) {
                     subscriber.onNext(Observable.from(listing.getObjectSummaries()));
-                    listing = s3.listNextBatchOfObjects(listing);
+                    // Retry on everything!
+                    listing = ExponentialBackoffRunner.run(() -> s3.listNextBatchOfObjects(listing),
+                            t -> true, TimeUnit.MINUTES.toMillis(2));
                 }
 
                 subscriber.onCompleted();
