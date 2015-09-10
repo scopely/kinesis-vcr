@@ -32,6 +32,10 @@ public class KinesisVcr {
 
         if (args.length > 0 && ("play".equals(args[0]) || "estimate".equals(args[0]))) {
 
+            if (vcrConfiguration.targetStream == null) {
+                throw new IllegalArgumentException("Must specify a target stream for playback or estimation.");
+            }
+
             if (args.length == 1) {
                 throw new IllegalArgumentException("Must be called with at least two arguments: e.g., `kinesis-vcr play 2014-05-01T00:00:00 2015-05-01T00:00:00` " +
                         "or `kinesis-vcr play 2014-05-01T00:00:00`");
@@ -90,7 +94,7 @@ public class KinesisVcr {
         String estimatedTimeHuman = minsToHumanReadableTimeSpan(estimatedTimeInMinutes);
 
         LOGGER.info("Target stream ({}) has {} shards", vcrConfiguration.targetStream, numberOfShards);
-        LOGGER.info("It would take around {} to replay the data in the provided range, which has {} files", estimatedTimeHuman, fileCount);
+        LOGGER.info("It would take around {} to replay the data in the provided range, which has {} files and a total size of {} MB", estimatedTimeHuman, fileCount, dataSizeInMegaBytes);
     }
 
     private static void replay(KinesisPlayer player, LocalDateTime start, LocalDateTime end, VcrConfiguration vcrConfiguration) {
