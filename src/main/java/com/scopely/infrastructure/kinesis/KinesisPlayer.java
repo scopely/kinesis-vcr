@@ -75,7 +75,13 @@ public class KinesisPlayer {
 
         try {
             DescribeStreamResult describeStreamResult = kinesis.describeStream(vcrConfiguration.targetStream);
-            numberOfShards = describeStreamResult.getStreamDescription().getShards().size();
+            numberOfShards = (int) describeStreamResult
+                    .getStreamDescription()
+                    .getShards()
+                    .stream()
+                    /* only take into account open shards */
+                    .filter(shard -> shard.getSequenceNumberRange().getEndingSequenceNumber() == null)
+                    .count();
         } catch (ResourceNotFoundException e) {
             LOGGER.error("Specified Kinesis stream '{}' not found", vcrConfiguration.targetStream);
             throw e;
