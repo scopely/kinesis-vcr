@@ -14,11 +14,13 @@ import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.util.IOUtils;
-
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import rx.Observable;
+import rx.Subscriber;
+import rx.schedulers.Schedulers;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -37,11 +39,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
-
-import rx.Observable;
-import rx.Subscriber;
-import rx.schedulers.Schedulers;
 
 import static java.util.stream.Collectors.toList;
 
@@ -244,8 +243,15 @@ public class KinesisPlayer {
                 while (!subscriber.isUnsubscribed() && !listing.getObjectSummaries().isEmpty()) {
                     subscriber.onNext(Observable.from(listing.getObjectSummaries()));
                     // Retry on everything!
-                    listing = ExponentialBackoffRunner.run(() -> s3.listNextBatchOfObjects(listing),
-                            t -> true, TimeUnit.MINUTES.toMillis(2));
+                    final ObjectListing finalListing = listing;
+                    try {
+                        listing = ExponentialBackoffRunner.run(() -> s3.listNextBatchOfObjects(finalListing),
+                                t -> true,
+                                TimeUnit.MINUTES.toMillis(2))
+                                .orElseThrow(() -> new TimeoutException("Failed to get a listing in the allotted time"));
+                    } catch (Throwable throwable) {
+                        throw new RuntimeException(throwable);
+                    }
                 }
 
                 subscriber.onCompleted();
