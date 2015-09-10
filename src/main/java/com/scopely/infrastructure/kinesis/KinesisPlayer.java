@@ -195,7 +195,7 @@ public class KinesisPlayer {
             throw new IllegalArgumentException("startDate > endDate");
         }
         if (end == null) {
-            end = start;
+            end = start.plusDays(1);
         }
 
 
