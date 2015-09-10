@@ -195,7 +195,10 @@ public class KinesisPlayer {
             throw new IllegalArgumentException("startDate > endDate");
         }
         if (end == null) {
-            end = start.plusDays(1);
+            // Since end was not provided, let's assume we want data for the provided start day.
+            // That means we must match s3 objects between start and start + 1 day.
+            // We subtract 1 second in order to avoid checking for files in the next day folder.
+            end = start.plusDays(1).minusSeconds(1);
         }
 
 
