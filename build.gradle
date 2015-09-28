@@ -6,20 +6,20 @@ buildscript {
 
     dependencies {
         classpath 'com.github.townsfolk:gradle-release:1.2'
+        classpath 'com.netflix.nebula:gradle-ospackage-plugin:3.1.0'
     }
 }
 
 
 plugins {
     id 'java'
-    id 'nebula.os-package' version '3.1.0'
     id 'com.github.johnrengelman.shadow' version '1.2.2'
 }
 
 apply plugin: 'java'
 apply plugin: 'application'
 apply plugin: 'com.github.johnrengelman.shadow'
-apply plugin: 'os-package-base'
+apply plugin: 'nebula.ospackage'
 apply plugin: 'release'
 apply plugin: 'maven'
 
