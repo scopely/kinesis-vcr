@@ -12,7 +12,7 @@ buildscript {
 
 plugins {
     id 'java'
-    id 'nebula.os-package' version '2.2.6'
+    id 'nebula.os-package' version '3.1.0'
     id 'com.github.johnrengelman.shadow' version '1.2.2'
 }
 
