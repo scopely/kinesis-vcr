@@ -21,11 +21,13 @@ apply plugin: 'application'
 apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'os-package-base'
 apply plugin: 'release'
+apply plugin: 'maven'
 
 sourceCompatibility = 1.8
 
 group = 'com.scopely'
 mainClassName = 'com.scopely.infrastructure.kinesis.KinesisVcr'
+applicationDefaultJvmArgs = ['-XX:+UseG1GC', '-XX:+UseStringDeduplication', '-Xmx6g', '-Xms6g']
 
 repositories {
     jcenter()
@@ -39,15 +41,12 @@ configurations {
 }
 
 dependencies {
+    compile 'io.reactivex:rxjava:1.0.14'
     compile ('com.amazonaws:amazon-kinesis-connectors:1.2.0') {
         // Exclude dependency on all of the SDK
         exclude group: 'com.amazonaws'
     }
-    // connector tested with 1.4
-    compile ('com.amazonaws:amazon-kinesis-client:1.4.0') {
-        // Exclude dependency on all of the SDK
-        exclude group: 'com.amazonaws'
-    }
+    compile ('com.amazonaws:amazon-kinesis-client:1.6.1')
     compile "com.amazonaws:aws-java-sdk-s3:${project.ext.awsSdkVersion}"
     compile "com.amazonaws:aws-java-sdk-kinesis:${project.ext.awsSdkVersion}"
     compile "com.amazonaws:aws-java-sdk-dynamodb:${project.ext.awsSdkVersion}"

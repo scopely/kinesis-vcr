@@ -31,8 +31,27 @@ VCR_BUCKET_NAME=dev-kinesis-backups
 ./build/install/kinesis-vcr/bin/kinesis-vcr play 2014-05-01 2014-05-10
 ```
 
-This will take a recording of the stream `my-important-data` recorded in the bucket `dev-kinesis-backups` and replay
-records for the date range 2014-05-01 to 2014-05-10 (inclusive) onto the stream `recovery-stream`.
+This will take a recording of the stream `my-important-data` recorded in the bucket `dev-kinesis-backups` and replay records for the date range 2014-05-01 to 2014-05-10 (exclusive of the end) onto the stream `recovery-stream`. If only one day of data should be play replayed use:
+
+```
+./build/install/kinesis-vcr/bin/kinesis-vcr play 2014-05-01
+```
+
+Replay can also specify times, for a narrow playback range:
+
+```
+./build/install/kinesis-vcr/bin/kinesis-vcr play 2014-05-01T12:00:00 2014-05-03:13:45:00
+```
+
+Specified times are always interpreted as UTC. 
+
+Prior to replaying a stream, the VCR can provide an estimated playing time, which is simply the size of the input dataset divided by the write throughput possible for the target stream. `kinesis-vcr estimate` takes the same parameters as `kinesis-vcr play`:
+
+```bash
+$ kinesis-vcr estimate 2014-05-01T12:00:00 2014-05-03:13:45:00
+[main] INFO com.scopely.infrastructure.kinesis.KinesisVcr - Target stream (kinesis-playback-test) has 2 shards
+[main] INFO com.scopely.infrastructure.kinesis.KinesisVcr - It would take around 50 mins to replay the data in the provided range, which has 341 files and a total size of 6038 MB
+```
 
 ## Running somewhere else?
 
@@ -88,6 +107,4 @@ More bells and whistles are sure to come.
 
 ## Format
 
-The VCR writes records to S3 as newline-delimited Base64 -- each record on the input stream is written to a line in the
-output file. On playback, it just Base64-decodes each line and emits it on the target stream. As such, this tool is
-completely agnostic to the format of records on the wire.
+The VCR writes records to S3 as newline-delimited Base64 -- each record on the input stream is written to a line in the output file. On playback, it just Base64-decodes each line and emits it on the target stream. As such, this tool is completely agnostic to the format of records on the wire.

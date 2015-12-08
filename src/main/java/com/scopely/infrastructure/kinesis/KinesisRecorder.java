@@ -48,6 +48,11 @@ public class KinesisRecorder extends KinesisConnectorExecutorBase<byte[], byte[]
         return new KinesisConnectorRecordProcessorFactory<>(new S3RecorderPipeline(s3), connectorConfiguration);
     }
 
+    public void stop() {
+        worker.shutdown();
+    }
+
+
     protected static String createWorkerId() {
         String workerId = String.format("localhost:%s", UUID.randomUUID());
         try {
