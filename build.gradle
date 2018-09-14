@@ -1,27 +1,7 @@
-buildscript {
-    repositories {
-        jcenter()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.github.townsfolk:gradle-release:1.2'
-    }
-}
-
-
 plugins {
-    id 'java'
-    id 'nebula.os-package' version '2.2.6'
-    id 'com.github.johnrengelman.shadow' version '1.2.2'
+    id "com.bmuschko.docker-java-application" version "3.6.1"
+    id 'application'
 }
-
-apply plugin: 'java'
-apply plugin: 'application'
-apply plugin: 'com.github.johnrengelman.shadow'
-apply plugin: 'os-package-base'
-apply plugin: 'release'
-apply plugin: 'maven'
 
 sourceCompatibility = 1.8
 
@@ -67,26 +47,15 @@ dependencies {
     compile 'org.slf4j:jcl-over-slf4j:1.7.7'
 }
 
-
-ospackage {
-    packageName project.name
-
-    requires('oracle-java8-installer')
-
-    into "/opt/scopely/${project.name}"
-    from ("${project.buildDir}/scripts") {
-        into 'bin'
+docker {
+    registryCredentials {
+        url = "https://$artifactoryDockerUrl"
+        username = artifactoryUser
+        password = artifactoryPassword
+        email = artifactoryUser
     }
 
-    from(project.jar.outputs.files) {
-        into 'lib'
-    }
-
-    from(project.configurations.runtime) {
-        into 'lib'
+    javaApplication {
+        tag = "${artifactoryDockerUrl}/library/${project.name}:${project.version}"
     }
 }
-
-project.tasks.buildDeb.dependsOn startScripts
-project.tasks.createReleaseTag.dependsOn buildDeb
-project.tasks.createReleaseTag.dependsOn buildDeb
