@@ -2,4 +2,8 @@ steps:
 - name: 'gcr.io/cloud-builders/gradle'
   args:
   - dockerBuildImage
+  # can't directly push, but can verify that it builds
+  - '-PartifactoryDockerUrl=foo'
+  - '-PartifactoryUser=foo'
+  - '-PartifactoryPassword=foo'
 
