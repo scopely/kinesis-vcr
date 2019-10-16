@@ -69,7 +69,7 @@ dependencies {
 ospackage {
     packageName project.name
 
-    requires('oracle-java8-installer')
+    requires('default-jre')
 
     into "/opt/scopely/${project.name}"
     from ("${project.buildDir}/scripts") {
